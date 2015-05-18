@@ -1,2 +1,7 @@
-# PythonOCC_Examples
-Examples of Python Open Cascade
+# PythonOCC Examples #
+
+Examples of Python OpenCascade focused mainly at using parametric surfaces.
+
+## Requirements ##
+
+* Python OpenCascade: http://www.pythonocc.org/
