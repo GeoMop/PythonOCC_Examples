@@ -11,8 +11,10 @@ from OCC.BRepBuilderAPI import *
 from OCC.TopoDS import *
 from OCC.STEPControl import *
 from OCC.BRepAlgoAPI import BRepAlgoAPI_Cut
-
 from OCC.Display.SimpleGui import init_display
+from OCC.IGESControl import *
+import argparse
+
 display, start_display, add_menu, add_function_to_menu = init_display()
 
 
@@ -37,7 +39,7 @@ def create_bspline_surface(array):
     return bspline_surface
 
 
-def bezier_surfaces(event=None):
+def bezier_surfaces(filename=None):
     """
     Generate and display bspline surface
     """
@@ -68,9 +70,22 @@ def bezier_surfaces(event=None):
     face2 = BRepBuilderAPI_MakeFace(bspl_surf2.GetHandle(), error).Shape()
     mold = BRepAlgoAPI_Cut(face1, face2).Shape()
 
+    if filename is not None:
+        iges_ctrl  = IGESControl_Controller()
+        iges_ctrl.Init()
+        iges_writer = IGESControl_Writer()
+        iges_writer.AddShape(mold)
+        iges_writer.Write(filename)
+
     display.DisplayShape(mold, update=True)
 
     start_display()
 
 if __name__ == '__main__':
-    bezier_surfaces()
+    # Parse argument
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--filename", type=str,
+        help="Write B-Spline surface to IGES file format", default=None)
+    args = parser.parse_args()
+    # Display and optionaly output surface to file (IGES file format)
+    bezier_surfaces(args.filename)
