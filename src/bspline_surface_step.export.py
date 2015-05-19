@@ -65,8 +65,8 @@ def bezier_surfaces(filename=None):
             step_ctrl = STEPControl_Controller()
             step_ctrl.Init()
             step_writer = STEPControl_Writer()
-            topodsface = topods_Face(BRepBuilderAPI_MakeFace(BSPLSURF.GetHandle(), 1e-6).Shape())
-            step_writer.Transfer(topodsface, STEPControl_AsIs)
+            topo_ds_face = topods_Face(BRepBuilderAPI_MakeFace(BSPLSURF.GetHandle(), 1e-6).Shape())
+            step_writer.Transfer(topo_ds_face, STEPControl_AsIs)
             step_writer.Write('surface.stp')
 
     display.DisplayShape(BSPLSURF.GetHandle(), update=True)
