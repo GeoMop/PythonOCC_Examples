@@ -1,5 +1,5 @@
 """
-Simple example of bspline surface
+Simple example of bspline surface exported to BREP file format
 """
 
 from OCC.gp import *
@@ -74,6 +74,6 @@ if __name__ == '__main__':
     # Parse argument
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--filename", type=str,
-        help="Write B-Spline surface to IGES file format", default=None)
+        help="Write B-Spline surface to BREP file format", default=None)
     args = parser.parse_args()
     bezier_surfaces(args.filename)
