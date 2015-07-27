@@ -50,46 +50,58 @@ def bezier_surfaces(filename=None):
     """
     display.EraseAll()
 
+    # Create Builder first
+    builder = BRep_Builder()
+
+    point1 = gp_Pnt(0, 0, 0)
+    point2 = gp_Pnt(1, 0, 0)
+    point3 = gp_Pnt(1, 1, 0)
+    point4 = gp_Pnt(0, 1, 0)
+    point5 = gp_Pnt(0, 0, 1)
+    point6 = gp_Pnt(1, 0, 1)
+    point7 = gp_Pnt(1, 1, 1)
+    point8 = gp_Pnt(0, 1, 1)
+
     array1 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array1.SetValue(1, 1, gp_Pnt(0, 0, 0))
-    array1.SetValue(1, 2, gp_Pnt(1, 0, 0))
-    array1.SetValue(2, 1, gp_Pnt(0, 1, 0))
-    array1.SetValue(2, 2, gp_Pnt(1, 1, 0))
+    array1.SetValue(1, 1, point1)
+    array1.SetValue(1, 2, point2)
+    array1.SetValue(2, 1, point4)
+    array1.SetValue(2, 2, point3)
     bspl_surf1 = create_bspline_surface(array1)
 
     array2 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array2.SetValue(1, 1, gp_Pnt(0, 0, 0))
-    array2.SetValue(1, 2, gp_Pnt(0, 0, 1))
-    array2.SetValue(2, 1, gp_Pnt(0, 1, 0))
-    array2.SetValue(2, 2, gp_Pnt(0, 1, 1))
+    array2.SetValue(1, 1, point1)
+    array2.SetValue(1, 2, point5)
+    array2.SetValue(2, 1, point4)
+    array2.SetValue(2, 2, point8)
     bspl_surf2 = create_bspline_surface(array2)
 
     array3 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array3.SetValue(1, 1, gp_Pnt(0, 0, 0))
-    array3.SetValue(1, 2, gp_Pnt(0, 0, 1))
-    array3.SetValue(2, 1, gp_Pnt(1, 0, 0))
-    array3.SetValue(2, 2, gp_Pnt(1, 0, 1))
+    array3.SetValue(1, 1, point1)
+    array3.SetValue(1, 2, point5)
+    array3.SetValue(2, 1, point2)
+    array3.SetValue(2, 2, point6)
     bspl_surf3 = create_bspline_surface(array3)
 
     array4 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array4.SetValue(1, 1, gp_Pnt(1, 0, 0))
-    array4.SetValue(1, 2, gp_Pnt(1, 0, 1))
-    array4.SetValue(2, 1, gp_Pnt(1, 1, 0))
-    array4.SetValue(2, 2, gp_Pnt(1, 1, 1))
+    array4.SetValue(1, 1, point2)
+    array4.SetValue(1, 2, point6)
+    array4.SetValue(2, 1, point3)
+    array4.SetValue(2, 2, point7)
     bspl_surf4 = create_bspline_surface(array4)
 
     array5 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array5.SetValue(1, 1, gp_Pnt(1, 1, 0))
-    array5.SetValue(1, 2, gp_Pnt(1, 1, 1))
-    array5.SetValue(2, 1, gp_Pnt(0, 1, 0))
-    array5.SetValue(2, 2, gp_Pnt(0, 1, 1))
+    array5.SetValue(1, 1, point3)
+    array5.SetValue(1, 2, point7)
+    array5.SetValue(2, 1, point4)
+    array5.SetValue(2, 2, point8)
     bspl_surf5 = create_bspline_surface(array5)
 
     array6 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array6.SetValue(1, 1, gp_Pnt(0, 0, 1))
-    array6.SetValue(1, 2, gp_Pnt(1, 0, 1))
-    array6.SetValue(2, 1, gp_Pnt(0, 1, 1))
-    array6.SetValue(2, 2, gp_Pnt(1, 1, 1))
+    array6.SetValue(1, 1, point5)
+    array6.SetValue(1, 2, point6)
+    array6.SetValue(2, 1, point8)
+    array6.SetValue(2, 2, point7)
     bspl_surf6 = create_bspline_surface(array6)
 
     display.DisplayShape(bspl_surf1.GetHandle(), update=True)
@@ -102,14 +114,6 @@ def bezier_surfaces(filename=None):
     face5 = BRepBuilderAPI_MakeFace(bspl_surf5.GetHandle(), error).Shape()
     face6 = BRepBuilderAPI_MakeFace(bspl_surf6.GetHandle(), error).Shape()
 
-    builder = BRep_Builder()
-
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
-
-    solid = TopoDS_Solid()
-    builder.MakeSolid(solid)
-
     shell = TopoDS_Shell()
     builder.MakeShell(shell)
 
@@ -120,7 +124,13 @@ def bezier_surfaces(filename=None):
     builder.Add(shell, face5)
     builder.Add(shell, face6)
 
+    solid = TopoDS_Solid()
+    builder.MakeSolid(solid)
+
     builder.Add(solid, shell)
+
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
 
     builder.Add(compound, solid)
 
