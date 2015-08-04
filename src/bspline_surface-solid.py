@@ -20,6 +20,11 @@ from OCC.BRepTools import breptools_Write
 from OCC.Display.SimpleGui import init_display
 from OCC.TopExp import TopExp_Explorer
 from OCC.TopAbs import TopAbs_SHELL
+from OCC.TopAbs import TopAbs_VERTEX
+from OCC.TopAbs import TopAbs_EDGE
+from OCC.TopAbs import TopAbs_WIRE
+from OCC.ShapeFix import ShapeFix_Shell
+from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 import argparse
 
 display, start_display, add_menu, add_function_to_menu = init_display()
@@ -116,25 +121,52 @@ def bezier_surfaces(filename=None):
     face5 = BRepBuilderAPI_MakeFace(bspl_surf5.GetHandle(), error).Shape()
     face6 = BRepBuilderAPI_MakeFace(bspl_surf6.GetHandle(), error).Shape()
 
-    temp = BRepAlgoAPI_Fuse(face1, face2).Shape()
-    temp = BRepAlgoAPI_Fuse(temp, face3).Shape()
-    temp = BRepAlgoAPI_Fuse(temp, face4).Shape()
-    temp = BRepAlgoAPI_Fuse(temp, face5).Shape()
-    temp = BRepAlgoAPI_Fuse(temp, face6).Shape()
+    # temp = BRepAlgoAPI_Fuse(face1, face2).Shape()
+    # temp = BRepAlgoAPI_Fuse(temp, face3).Shape()
+    # temp = BRepAlgoAPI_Fuse(temp, face4).Shape()
+    # temp = BRepAlgoAPI_Fuse(temp, face5).Shape()
+    # temp = BRepAlgoAPI_Fuse(temp, face6).Shape()
 
-    explorer = TopExp_Explorer(temp, TopAbs_SHELL)
-    if explorer.More() is True:
-        shape = explorer.Current()
+    # count = 0
+    # explorer = TopExp_Explorer(temp, TopAbs_EDGE)
+    # while explorer.More() is True:
+    #     shape = explorer.Current()
+    #     print shape.HashCode(1000)
+    #     explorer.Next()
+    #     count += 1
+    # print "shape count: ", count
 
-    shell = topods.Shell(shape)
+    # 6 faces, 6 wires, 24 edges, 48 vertexes :-(
+
+    # shell_fix = ShapeFix_Shell(shell)
+    # print "bad faces: ", shell_fix.NbShells()
+    # print "precision: ", shell_fix.Precision()
+    # shell = shell_fix.Shell()
+
+    shell = TopoDS_Shell()
     builder.MakeShell(shell)
 
-    # builder.Add(shell, face1)
-    # builder.Add(shell, face2)
-    # builder.Add(shell, face3)
-    # builder.Add(shell, face4)
-    # builder.Add(shell, face5)
-    # builder.Add(shell, face6)
+    builder.Add(shell, face1)
+    builder.Add(shell, face2)
+    builder.Add(shell, face3)
+    builder.Add(shell, face4)
+    builder.Add(shell, face5)
+    builder.Add(shell, face6)
+
+    shape = TopoDS_Shape(shell)
+    fuse_edges = TopOpeBRepTool_FuseEdges(shape)
+    new_shape = fuse_edges.Shape()
+
+    new_shell = topods.Shell(new_shape)
+
+    count = 0
+    explorer = TopExp_Explorer(new_shell, TopAbs_EDGE)
+    while explorer.More() is True:
+        shape = explorer.Current()
+        print shape.HashCode(1000)
+        explorer.Next()
+        count += 1
+    print "shape count: ", count
 
     solid = TopoDS_Solid()
     builder.MakeSolid(solid)
