@@ -17,6 +17,7 @@ from OCC.TopAbs import TopAbs_SHAPE
 
 import argparse
 
+# Dictionary of shape names
 SHAPE_NAMES = {
     0: 'COMPOUND',
     1: 'COMPSOLID',
@@ -29,6 +30,8 @@ SHAPE_NAMES = {
     8: 'SHAPE'
 }
 
+# shape.HashCode() require some magical constant
+HASH_CONST = 100000
 
 def get_shape_list(shape, shape_class):
     """
@@ -43,7 +46,7 @@ def get_shape_list(shape, shape_class):
     return sequence
 
 
-def print_shape_content(shape, indent=0):
+def print_shape_content(shape, base_shape_stats, indent=0):
     """
     Print content of shape
     """
@@ -71,29 +74,85 @@ def print_shape_content(shape, indent=0):
 
     shape_type = shape.ShapeType()
 
-    #if shape.Checked() is True:
-    #    return
-
-    print indent * " ", SHAPE_NAMES[shape_type], shape
-    # shape.Checked(True)
+    if shape.Checked() is not True:
+        print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)]
+        shape.Checked(True)
+    else:
+        print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)], " Checked"
 
     for sub_shape_type in SHAPE_CLASSES[shape_type]:
         shape_sequence = get_shape_list(shape, sub_shape_type)
         for sub_shape in shape_sequence:
-            print_shape_content(sub_shape, indent + 1)
+            print_shape_content(sub_shape, base_shape_stats, indent + 1)
         if len(shape_sequence) != 0:
             break
+
+
+def create_shape_stat(base_shape):
+    """
+    This function create statistics of shapes count (duplicities)
+    """
+    SHAPE_TYPES = (
+        TopAbs_COMPSOLID,
+        TopAbs_SOLID,
+        TopAbs_SHELL,
+        TopAbs_FACE,
+        TopAbs_WIRE,
+        TopAbs_EDGE,
+        TopAbs_VERTEX,
+        TopAbs_SHAPE
+    )
+
+    shape_stats = {
+        TopAbs_COMPSOLID: {},
+        TopAbs_SOLID: {},
+        TopAbs_SHELL: {},
+        TopAbs_FACE: {},
+        TopAbs_WIRE: {},
+        TopAbs_EDGE: {},
+        TopAbs_VERTEX: {},
+        TopAbs_SHAPE: {}
+    }
+
+    for shape_type in SHAPE_TYPES:
+        explorer = TopExp_Explorer(base_shape, shape_type)
+        while explorer.More():
+            shape = explorer.Current()
+            if shape.HashCode(HASH_CONST) not in shape_stats[shape_type]:
+                shape_stats[shape_type][shape.HashCode(HASH_CONST)] = 1
+            else:
+                shape_stats[shape_type][shape.HashCode(HASH_CONST)] += 1
+            explorer.Next()
+
+    return shape_stats
+
+
+def print_stat(base_shape_stats):
+    """
+    This function print statistics about shape
+    """
+    for shape_type,shape_type_stat in base_shape_stats.items():
+        counter = 0
+        for shape_count in shape_type_stat.values():
+            counter += shape_count
+        print SHAPE_NAMES[shape_type], ":", len(shape_type_stat), "x", counter
 
 
 def main(filename, display_shape=False):
     """
     Main function of this module
     """
-    shape = TopoDS_Shape()
+    base_shape = TopoDS_Shape()
     builder = BRep_Builder()
-    breptools_Read(shape, filename, builder)
+    breptools_Read(base_shape, filename, builder)
 
-    print_shape_content(shape)
+    base_shape_stats = create_shape_stat(base_shape)
+
+    print "Statistics:"
+    print_stat(base_shape_stats)
+    print ""
+    print "Topology:"
+    print_shape_content(base_shape, base_shape_stats)
 
 
 if __name__ == '__main__':
