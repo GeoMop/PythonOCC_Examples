@@ -1,0 +1,11 @@
+vymezeni.txt: 6 bodů vymezujících polygon oblasti;
+	v prvním sloupci je ID, které určuje pořadí bodù;
+	dále postupně X, Y, Z (fiktivnì nulové)
+vrchol.txt: jeden vrcholek; x,y,z souřadnice
+teren.txt: pravidelný grid bodù s krokem 100 m;
+	jeho rozsah je větší než rozsah vymezení;
+	jen x,y,z souřadnice
+reky_body.txt: body diskretizující říční síť;
+	první dva sloupce jsou jejich x,y souřadnice;
+	třetí sloupec relativní poloha bodu v rámci řeky (interval 0-1);
+	poslední sloupec ID řeky
