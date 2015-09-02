@@ -1,6 +1,9 @@
 import numpy as np
 from numpy.linalg import inv
 import matplotlib.pyplot as plt
+import sys
+
+eps = sys.float_info.epsilon
 
 # Coordinates of points P=[P_{1}, P_{2}, ..., P_{n}]
 x = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
@@ -33,9 +36,6 @@ Y = np.mat(y).transpose()
 Cx = iM * inv(tT * T) * tT * X
 Cy = iM * inv(tT * T) * tT * Y
 
-print Cx.transpose()
-print Cy.transpose()
-
 diff_x0 = x[0] - Cx[0]
 diff_xn = x[n - 1] - Cx[3]
 
@@ -47,26 +47,32 @@ dy = ( diff_y0 + diff_yn ) / 2.0
 Kx = np.array([x[0], Cx[1], Cx[2], x[n - 1]])
 Ky = np.array([y[0], Cy[1] - dy, Cy[2] - dy, y[n - 1]])
 
-print Kx
-print Ky
-
+# Draw coordinates of P points
 plt.scatter(x,y)
-
-ts = np.arange(0.0, 1.01, 0.05)
-
-print ts
-
-print np.mat([Kx, Ky]).transpose()
 
 Px = []
 Py = []
 
-for t in ts:
-    P = np.array([t**3, t**2, t, 1]) * M * np.mat([Kx, Ky]).transpose()
-    print P
+t = 0.0
+dt = 0.02
+while t < 1.0 + dt:
+    P = np.array([t**3, t**2, t, 1]) * M * np.bmat([Cx, Cy])
     Px.append(P[0, 0])
     Py.append(P[0, 1])
+    t += dt
 
-plt.plot(Px, Py)
+plt.plot(Px, Py, c='red')
+
+Px = []
+Py = []
+
+t = 0.0
+while t < 1.0 + dt:
+    P = np.array([t**3, t**2, t, 1]) * M * np.mat([Kx, Ky]).transpose()
+    Px.append(P[0, 0])
+    Py.append(P[0, 1])
+    t += dt
+
+plt.plot(Px, Py, c='blue')
 
 plt.show()
