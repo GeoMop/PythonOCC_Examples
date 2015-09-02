@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import inv
+import matplotlib.pyplot as plt
 
 # Coordinates of points P=[P_{1}, P_{2}, ..., P_{n}]
 x = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
@@ -48,3 +49,24 @@ Ky = np.array([y[0], Cy[1] - dy, Cy[2] - dy, y[n - 1]])
 
 print Kx
 print Ky
+
+plt.scatter(x,y)
+
+ts = np.arange(0.0, 1.01, 0.05)
+
+print ts
+
+print np.mat([Kx, Ky]).transpose()
+
+Px = []
+Py = []
+
+for t in ts:
+    P = np.array([t**3, t**2, t, 1]) * M * np.mat([Kx, Ky]).transpose()
+    print P
+    Px.append(P[0, 0])
+    Py.append(P[0, 1])
+
+plt.plot(Px, Py)
+
+plt.show()
