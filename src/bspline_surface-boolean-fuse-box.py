@@ -12,7 +12,7 @@ from OCC.TopoDS import *
 from OCC.STEPControl import *
 from OCC.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.Display.SimpleGui import init_display
-from OCC.IGESControl import *
+from OCC.BRepTools import breptools_Write
 import argparse
 
 display, start_display, add_menu, add_function_to_menu = init_display()
@@ -121,11 +121,7 @@ def bezier_surfaces(filename=None):
     mold = BRepAlgoAPI_Fuse(temp, face7).Shape()
 
     if filename is not None:
-        iges_ctrl  = IGESControl_Controller()
-        iges_ctrl.Init()
-        iges_writer = IGESControl_Writer()
-        iges_writer.AddShape(mold)
-        iges_writer.Write(filename)
+        breptools_Write(mold, filename)
 
     display.DisplayShape(mold, update=True)
 
@@ -135,7 +131,7 @@ if __name__ == '__main__':
     # Parse argument
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--filename", type=str,
-        help="Write B-Spline surface to IGES file format", default=None)
+        help="Write B-Spline surface to BREP file format", default=None)
     args = parser.parse_args()
     # Display and optionaly output surface to file (IGES file format)
     bezier_surfaces(args.filename)
