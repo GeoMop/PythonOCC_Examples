@@ -75,11 +75,11 @@ def bezier_surfaces(event=None):
 
         BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0)
 
-    # display.EraseAll()
-    # from OCC.Display.SimpleGui import init_display
-    # display, start_display, add_menu, add_function_to_menu = init_display()
-    # display.DisplayShape(BSPLSURF.GetHandle(), update=True)
-    # start_display()
+    from OCC.Display.SimpleGui import init_display
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
+    display.DisplayShape(BSPLSURF.GetHandle(), update=True)
+    start_display()
 
 def bspline_surface():
     """
@@ -119,11 +119,11 @@ def bspline_surface():
     vmult.SetValue(1, 3)
     vmult.SetValue(2, 3)
 
-    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0)
+    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg - 1, vdeg - 1, 0, 0)
 
-    display.EraseAll()
     from OCC.Display.SimpleGui import init_display
     display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
     display.DisplayShape(BSPLSURF.GetHandle(), update=True)
     start_display()
 
