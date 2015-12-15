@@ -19,7 +19,7 @@ def bezier_surfaces(event=None):
     Create bezier surface, then create bspline surface from import
     it and search, what is inside created bspline surface.
     """
-    array = TColgp_Array2OfPnt(1, 3, 1, 3)                                                           
+    array = TColgp_Array2OfPnt(1, 3, 1, 3)
 
     array.SetValue(1, 1, gp_Pnt(1, 1, 1))
     array.SetValue(1, 2, gp_Pnt(2, 1, 2))
@@ -86,12 +86,16 @@ def bspline_surface():
     Try to create B-spline surface directly
     """
 
-    # Set U and V degree to 3
-    udeg = 3
-    vdeg = 3
+    # Set U and V degree to 2
+    udeg = 2
+    vdeg = 2
 
-    # Create 2D array of poles
-    poles = TColgp_Array2OfPnt(1, udeg, 1, vdeg)
+    # Non-periodic surface
+    uperiod = False
+    vperiod = False
+
+    # Create 2D array of poles (control points)
+    poles = TColgp_Array2OfPnt(1, udeg + 1, 1, vdeg + 1)
     poles.SetValue(1, 1, gp_Pnt(1, 1, 1))
     poles.SetValue(1, 2, gp_Pnt(2, 1, 2))
     poles.SetValue(1, 3, gp_Pnt(3, 1, 1))
@@ -102,25 +106,40 @@ def bspline_surface():
     poles.SetValue(3, 2, gp_Pnt(2, 3, 1))
     poles.SetValue(3, 3, gp_Pnt(3, 3, 0))
 
-    # Knots U and V
-    uknots = TColStd_Array1OfReal(1, 2)
-    vknots = TColStd_Array1OfReal(1, 2)
+    # Length of uknots and umult has to be same
+    # Same rule is for vknots and vmult
+    uknot_len = umult_len = 2
+    vknot_len = vmult_len = 2
+
+    # Knots for U and V direction
+    uknots = TColStd_Array1OfReal(1, uknot_len)
+    vknots = TColStd_Array1OfReal(1, vknot_len)
+
+    # Main curves begins and ends at first and last points
     uknots.SetValue(1, 0.0)
     uknots.SetValue(2, 1.0)
     vknots.SetValue(1, 0.0)
     vknots.SetValue(2, 1.0)
 
-    # Multis U and V
-    umult = TColStd_Array1OfInteger(1, 2)
-    vmult = TColStd_Array1OfInteger(1, 2)
+    # Multiplicities for U and V direction
+    umult = TColStd_Array1OfInteger(1, umult_len)
+    vmult = TColStd_Array1OfInteger(1, vmult_len)
 
-    umult.SetValue(1, 3)
-    umult.SetValue(2, 3)
-    vmult.SetValue(1, 3)
-    vmult.SetValue(2, 3)
+    # First and last multiplicities are set to udeg + 1 (vdeg respectively),
+    # because we want main curves to start and finish on the first and
+    # the last points
+    umult.SetValue(1, udeg + 1)
+    umult.SetValue(2, udeg + 1)
+    vmult.SetValue(1, vdeg + 1)
+    vmult.SetValue(2, vdeg + 1)
 
-    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg - 1, vdeg - 1, 0, 0)
+    # Some other rules, that has to hold:
+    # poles.ColLength == sum(umult(i)) - udeg - 1 (e.g.: 3 == 6 - 2 - 1)
 
+    # Try to create surface
+    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
+
+    # Display surface
     from OCC.Display.SimpleGui import init_display
     display, start_display, add_menu, add_function_to_menu = init_display()
     display.EraseAll()
@@ -128,5 +147,5 @@ def bspline_surface():
     start_display()
 
 if __name__ == '__main__':
-    bezier_surfaces()
+    #bezier_surfaces()
     bspline_surface()
