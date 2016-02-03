@@ -106,6 +106,18 @@ def bspline_surface():
     poles.SetValue(3, 2, gp_Pnt(2, 3, 1))
     poles.SetValue(3, 3, gp_Pnt(3, 3, 0))
 
+    # Create 2D array of weights
+    weights = TColStd_Array2OfReal(1, udeg + 1, 1, vdeg + 1)
+    weights.SetValue(1, 1, 1.0)
+    weights.SetValue(1, 2, 1.0)
+    weights.SetValue(1, 3, 1.0)
+    weights.SetValue(2, 1, 1.0)
+    weights.SetValue(2, 2, 1.0)
+    weights.SetValue(2, 3, 1.0)
+    weights.SetValue(3, 1, 1.0)
+    weights.SetValue(3, 2, 1.0)
+    weights.SetValue(3, 3, 1.0)
+
     # Length of uknots and umult has to be same
     # Same rule is for vknots and vmult
     uknot_len = umult_len = 2
@@ -136,8 +148,10 @@ def bspline_surface():
     # Some other rules, that has to hold:
     # poles.ColLength == sum(umult(i)) - udeg - 1 (e.g.: 3 == 6 - 2 - 1)
 
-    # Try to create surface
-    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
+    # Try to create surface (no weight)
+    #BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
+    # Try to create surface (weights to default values)
+    BSPLSURF = Geom_BSplineSurface(poles, weights, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
 
     # Display surface
     from OCC.Display.SimpleGui import init_display
