@@ -44,34 +44,34 @@ def bezier_surfaces(event=None):
         for pole_i in range(poles.LowerCol(), poles.ColLength() + 1, 1):
             for pole_j in range(poles.LowerRow(), poles.RowLength() + 1, 1):
                 point = poles.Value(pole_i, pole_j)
-                print pole_i, pole_j, ": (", point.X(), point.Y(), point.Z(), ")"
-        print
+                print(pole_i, pole_j, ": (", point.X(), point.Y(), point.Z(), ")")
+        print()
 
         # Knots U and V
         uknots = BB.UKnots().GetObject().Array1()
         vknots = BB.VKnots().GetObject().Array1()
-        print "uknots: ", uknots
+        print("uknots: ", uknots)
         for i in range(uknots.Lower(), uknots.Length() + 1, 1):
-            print uknots.Value(i)
-        print "vknots: ", vknots
+            print(uknots.Value(i))
+        print("vknots: ", vknots)
         for j in range(vknots.Lower(), vknots.Length() + 1, 1):
-            print vknots.Value(j)
-        print
+            print(vknots.Value(j))
+        print()
 
         # Multi U and V
         umult = BB.UMultiplicities().GetObject().Array1()
         vmult = BB.VMultiplicities().GetObject().Array1()
-        print "umult: ", umult
+        print("umult: ", umult)
         for i in range(umult.Lower(), umult.Length() + 1, 1):
-            print umult.Value(i)
-        print "vmult: ", vmult
+            print(umult.Value(i))
+        print("vmult: ", vmult)
         for j in range(vmult.Lower(), vmult.Length() + 1, 1):
-            print vmult.Value(i)
-        print
+            print(vmult.Value(i))
+        print()
 
         udeg = BB.UDegree()
         vdeg = BB.VDegree()
-        print "udeg, vdeg: ", udeg, vdeg
+        print("udeg, vdeg: ", udeg, vdeg)
 
         BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0)
 
