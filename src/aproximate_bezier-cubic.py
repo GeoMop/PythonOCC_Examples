@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import inv
+import matplotlib.pyplot as plt
 
 # Coordinates of points P=[P_{1}, P_{2}, ..., P_{n}]
 x = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
@@ -30,5 +31,21 @@ Y = np.mat(y).transpose()
 Cx = iM * inv(tT * T) * tT * X
 Cy = iM * inv(tT * T) * tT * Y
 
-print Cx
-print Cy
+# Draw coordinates of P points
+plt.scatter(x,y, c='black')
+
+# Draw bezier curve
+Px = []
+Py = []
+
+t = 0.0
+dt = 0.02
+while t < 1.0 + dt:
+    P = np.array([t**3, t**2, t, 1]) * M * np.bmat([Cx, Cy])
+    Px.append(P[0, 0])
+    Py.append(P[0, 1])
+    t += dt
+
+plt.plot(Px, Py, c='blue')
+
+plt.show()
