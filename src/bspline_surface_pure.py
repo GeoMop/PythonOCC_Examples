@@ -44,34 +44,34 @@ def bezier_surfaces(event=None):
         for pole_i in range(poles.LowerCol(), poles.ColLength() + 1, 1):
             for pole_j in range(poles.LowerRow(), poles.RowLength() + 1, 1):
                 point = poles.Value(pole_i, pole_j)
-                print pole_i, pole_j, ": (", point.X(), point.Y(), point.Z(), ")"
-        print
+                print(pole_i, pole_j, ": (", point.X(), point.Y(), point.Z(), ")")
+        print()
 
         # Knots U and V
         uknots = BB.UKnots().GetObject().Array1()
         vknots = BB.VKnots().GetObject().Array1()
-        print "uknots: ", uknots
+        print("uknots: ", uknots)
         for i in range(uknots.Lower(), uknots.Length() + 1, 1):
-            print uknots.Value(i)
-        print "vknots: ", vknots
+            print(uknots.Value(i))
+        print("vknots: ", vknots)
         for j in range(vknots.Lower(), vknots.Length() + 1, 1):
-            print vknots.Value(j)
-        print
+            print(vknots.Value(j))
+        print()
 
         # Multi U and V
         umult = BB.UMultiplicities().GetObject().Array1()
         vmult = BB.VMultiplicities().GetObject().Array1()
-        print "umult: ", umult
+        print("umult: ", umult)
         for i in range(umult.Lower(), umult.Length() + 1, 1):
-            print umult.Value(i)
-        print "vmult: ", vmult
+            print(umult.Value(i))
+        print("vmult: ", vmult)
         for j in range(vmult.Lower(), vmult.Length() + 1, 1):
-            print vmult.Value(i)
-        print
+            print(vmult.Value(i))
+        print()
 
         udeg = BB.UDegree()
         vdeg = BB.VDegree()
-        print "udeg, vdeg: ", udeg, vdeg
+        print("udeg, vdeg: ", udeg, vdeg)
 
         BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0)
 
@@ -106,6 +106,18 @@ def bspline_surface():
     poles.SetValue(3, 2, gp_Pnt(2, 3, 1))
     poles.SetValue(3, 3, gp_Pnt(3, 3, 0))
 
+    # Create 2D array of weights
+    weights = TColStd_Array2OfReal(1, udeg + 1, 1, vdeg + 1)
+    weights.SetValue(1, 1, 1.0)
+    weights.SetValue(1, 2, 1.0)
+    weights.SetValue(1, 3, 1.0)
+    weights.SetValue(2, 1, 1.0)
+    weights.SetValue(2, 2, 1.0)
+    weights.SetValue(2, 3, 1.0)
+    weights.SetValue(3, 1, 1.0)
+    weights.SetValue(3, 2, 1.0)
+    weights.SetValue(3, 3, 1.0)
+
     # Length of uknots and umult has to be same
     # Same rule is for vknots and vmult
     uknot_len = umult_len = 2
@@ -136,8 +148,10 @@ def bspline_surface():
     # Some other rules, that has to hold:
     # poles.ColLength == sum(umult(i)) - udeg - 1 (e.g.: 3 == 6 - 2 - 1)
 
-    # Try to create surface
-    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
+    # Try to create surface (no weight)
+    #BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
+    # Try to create surface (weights to default values)
+    BSPLSURF = Geom_BSplineSurface(poles, weights, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
 
     # Display surface
     from OCC.Display.SimpleGui import init_display
