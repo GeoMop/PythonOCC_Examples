@@ -12,7 +12,8 @@ from OCC.TopoDS import *
 from OCC.STEPControl import *
 from OCC.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.Display.SimpleGui import init_display
-from OCC.IGESControl import *
+from OCC.TopTools import TopTools_ListIteratorOfListOfShape
+from OCC.BRepTools import breptools_Write
 import argparse
 
 display, start_display, add_menu, add_function_to_menu = init_display()
@@ -56,10 +57,10 @@ def bezier_surfaces(filename=None):
     #display.DisplayShape(bspl_surf1.GetHandle(), update=True)
 
     array2 = TColgp_Array2OfPnt(1, 2, 1, 2)
-    array2.SetValue(1, 1, gp_Pnt( 0.5, 0.25, 0.5))
-    array2.SetValue(1, 2, gp_Pnt( 0.5, 0.75, 0.5))
-    array2.SetValue(2, 1, gp_Pnt(-0.5, 0.25, 0.5))
-    array2.SetValue(2, 2, gp_Pnt(-0.5, 0.75, 0.5))
+    array2.SetValue(1, 1, gp_Pnt( 0.5, 0.25, 0.55))
+    array2.SetValue(1, 2, gp_Pnt( 0.5, 0.75, 0.3))
+    array2.SetValue(2, 1, gp_Pnt(-0.5, 0.25, 0.71))
+    array2.SetValue(2, 2, gp_Pnt(-0.5, 0.75, 0.6))
 
     bspl_surf2 = create_bspline_surface(array2)
 
@@ -68,14 +69,21 @@ def bezier_surfaces(filename=None):
     error = 1e-6
     face1 = BRepBuilderAPI_MakeFace(bspl_surf1.GetHandle(), error).Shape()
     face2 = BRepBuilderAPI_MakeFace(bspl_surf2.GetHandle(), error).Shape()
-    mold = BRepAlgoAPI_Fuse(face1, face2).Shape()
+    fuse = BRepAlgoAPI_Fuse(face1, face2)
+    mold = fuse.Shape()
+
+    edges = fuse.SectionEdges()
+    print('List of edges: ', edges)
+
+    # Iterate over list of edges
+    occ_iterator = TopTools_ListIteratorOfListOfShape(edges)
+    while occ_iterator.More():
+        edge = occ_iterator.Value()
+        print('Edge: ', edge)
+        occ_iterator.Next()
 
     if filename is not None:
-        iges_ctrl  = IGESControl_Controller()
-        iges_ctrl.Init()
-        iges_writer = IGESControl_Writer()
-        iges_writer.AddShape(mold)
-        iges_writer.Write(filename)
+        breptools_Write(mold, filename)
 
     display.DisplayShape(mold, update=True)
 
@@ -85,7 +93,7 @@ if __name__ == '__main__':
     # Parse argument
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--filename", type=str,
-        help="Write B-Spline surface to IGES file format", default=None)
+        help="Write B-Spline surface to BREP file format", default=None)
     args = parser.parse_args()
     # Display and optionaly output surface to file (IGES file format)
     bezier_surfaces(args.filename)
