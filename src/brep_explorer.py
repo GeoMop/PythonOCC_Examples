@@ -30,7 +30,9 @@ SHAPE_NAMES = {
     8: 'SHAPE'
 }
 
-# shape.HashCode() require some magical constant
+SHAPE_TYPES = { value:key for key,value in SHAPE_NAMES.items() }
+
+# shape.HashCode() requires some magical constant
 HASH_CONST = 100000
 
 def get_shape_list(shape, shape_class):
@@ -75,10 +77,16 @@ def print_shape_content(shape, base_shape_stats, indent=0):
     shape_type = shape.ShapeType()
 
     if shape.Checked() is not True:
-        print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)]
+        try:
+            print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)]
+        except KeyError:
+            print shape_type, "??"
         shape.Checked(True)
     else:
-        print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)], " Checked"
+        try:
+            print indent * " ", SHAPE_NAMES[shape_type], shape.HashCode(HASH_CONST), base_shape_stats[shape_type][shape.HashCode(HASH_CONST)], " Checked"
+        except KeyError:
+            print shape_type, "????"
 
     for sub_shape_type in SHAPE_CLASSES[shape_type]:
         shape_sequence = get_shape_list(shape, sub_shape_type)
@@ -125,6 +133,43 @@ def create_shape_stat(base_shape):
             explorer.Next()
 
     return shape_stats
+
+
+def shape_disassembly(base_shape):
+    """
+    This function tries to disable shape to list of basic components
+    """
+    SHAPE_TYPES = (
+        TopAbs_COMPSOLID,
+        TopAbs_SOLID,
+        TopAbs_SHELL,
+        TopAbs_FACE,
+        TopAbs_WIRE,
+        TopAbs_EDGE,
+        TopAbs_VERTEX,
+        TopAbs_SHAPE
+    )
+
+    shape_primitives = {
+        TopAbs_COMPSOLID: {},
+        TopAbs_SOLID: {},
+        TopAbs_SHELL: {},
+        TopAbs_FACE: {},
+        TopAbs_WIRE: {},
+        TopAbs_EDGE: {},
+        TopAbs_VERTEX: {},
+        TopAbs_SHAPE: {}
+    }
+
+    for shape_type in SHAPE_TYPES:
+        explorer = TopExp_Explorer(base_shape, shape_type)
+        while explorer.More():
+            shape = explorer.Current()
+            if shape.HashCode(HASH_CONST) not in shape_primitives[shape_type]:
+                shape_primitives[shape_type][shape.HashCode(HASH_CONST)] = shape
+            explorer.Next()
+
+    return shape_primitives
 
 
 def print_stat(base_shape_stats):
