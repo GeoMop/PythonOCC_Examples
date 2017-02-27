@@ -135,7 +135,7 @@ def create_shape_stat(base_shape):
     return shape_stats
 
 
-def shape_disassembly(base_shape):
+def shape_disassembly(base_shape, shape_primitives=None):
     """
     This function tries to disable shape to list of basic components
     """
@@ -150,16 +150,17 @@ def shape_disassembly(base_shape):
         TopAbs_SHAPE
     )
 
-    shape_primitives = {
-        TopAbs_COMPSOLID: {},
-        TopAbs_SOLID: {},
-        TopAbs_SHELL: {},
-        TopAbs_FACE: {},
-        TopAbs_WIRE: {},
-        TopAbs_EDGE: {},
-        TopAbs_VERTEX: {},
-        TopAbs_SHAPE: {}
-    }
+    if shape_primitives is None:
+        shape_primitives = {
+            TopAbs_COMPSOLID: {},
+            TopAbs_SOLID: {},
+            TopAbs_SHELL: {},
+            TopAbs_FACE: {},
+            TopAbs_WIRE: {},
+            TopAbs_EDGE: {},
+            TopAbs_VERTEX: {},
+            TopAbs_SHAPE: {}
+        }
 
     for shape_type in SHAPE_TYPES:
         explorer = TopExp_Explorer(base_shape, shape_type)
@@ -169,6 +170,16 @@ def shape_disassembly(base_shape):
                 shape_primitives[shape_type][shape.HashCode(HASH_CONST)] = shape
             explorer.Next()
 
+    return shape_primitives
+
+
+def shapes_disassembly(base_shapes):
+    """
+    This function tries to disassembly itterable variable of shapes into list of primitives
+    """
+    shape_primitives = None
+    for shape in base_shapes:
+        shape_primitives = shape_disassembly(shape, shape_primitives)
     return shape_primitives
 
 
