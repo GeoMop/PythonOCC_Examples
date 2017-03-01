@@ -3,6 +3,8 @@ This module is able to create simple solid object (cube). Each side of
 cube is bspline surface. This solid object can be exported to BREP file.
 """
 
+from __future__ import print_function
+
 from OCC.gp import *
 from OCC.Geom import *
 from OCC.TColGeom import *
@@ -28,9 +30,6 @@ from OCC.ShapeFix import ShapeFix_Shell
 from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 from OCC.BRepBuilderAPI import BRepBuilderAPI_Sewing
 import argparse
-
-display, start_display, add_menu, add_function_to_menu = init_display()
-
 
 import brep_explorer
 import core_topology_traverse as traverse
@@ -137,39 +136,12 @@ def make_box(builder, points):
     return solid
 
 
-def compare_faces(face1, face2):
+def create_test_boxes(builder):
     """
-    Compate two faces
+    Create several boxes for testing purpose
     """
-    for vert in face1:
-        if vert not in face2:
-            return False
 
-    return True
-
-
-def remove_duple_faces(reshape, faces, new_face, face_shape):
-    """
-    """
-    for face in faces.keys():
-        if compare_faces(face, new_face) is True:
-            original_face = faces[new_face]
-            print('Duplicity of: ', original_face)
-            print('Removing this face ...')
-            reshape.Replace(face_shape, original_face.Reversed())
-            return True
-    return False
-    
-
-def solid_compound(filename=None):
-    """
-    Generate and display solid object created from bspline surface.
-    """
-    display.EraseAll()
-
-    # Create Builder first
-    builder = BRep_Builder()
-
+    # Base box
     points_1 = [
         gp_Pnt(0.0, 0.0, 0.0),
         gp_Pnt(1.0, 0.0, 0.0),
@@ -182,7 +154,8 @@ def solid_compound(filename=None):
     ]
     solid_box1 = make_box(builder, points_1)
 
-    dx = 0.5
+    # Definition of boxes used for spliting base box
+    dx = 0.4
     dy = 0.01
     dz = 0.01
     points_2 = [
@@ -197,9 +170,7 @@ def solid_compound(filename=None):
     ]
     solid_box2 = make_box(builder, points_2)
 
-    dx = 0.5
-    dy = 0.01
-    dz = 0.01
+    dx = 1 - 0.4
     points_3 = [
         gp_Pnt(0.0-dx, 0.0-dy, 0.0-dz),
         gp_Pnt(1.0-dx, 0.0-dy, 0.0-dz),
@@ -212,36 +183,74 @@ def solid_compound(filename=None):
     ]
     solid_box3 = make_box(builder, points_3)
 
-    mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
-    mold2 = BRepAlgoAPI_Cut(solid_box1, solid_box3)
+    # Definition of boxes used for spliting one part of slitted box
+    dx = 0.01
+    dy = 0.7
+    dz = 0.01
+    points_4 = [
+        gp_Pnt(0.0-dx, 0.0+dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 0.0+dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 0.0-dz),
+        gp_Pnt(0.0-dx, 1.0+dy, 0.0-dz),
+        gp_Pnt(0.0-dx, 0.0+dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 0.0+dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 1.0+dz),
+        gp_Pnt(0.0-dx, 1.0+dy, 1.0+dz)
+    ]
+    solid_box4 = make_box(builder, points_4)
 
-    # print('Mold1')
-    # stat = brep_explorer.create_shape_stat(mold1.Shape())
-    # brep_explorer.print_stat(stat)
+    dy = 1.0 - dy
+    points_5 = [
+        gp_Pnt(0.0-dx, 0.0-dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 0.0-dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 1.0-dy, 0.0-dz),
+        gp_Pnt(0.0-dx, 1.0-dy, 0.0-dz),
+        gp_Pnt(0.0-dx, 0.0-dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 0.0-dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 1.0-dy, 1.0+dz),
+        gp_Pnt(0.0-dx, 1.0-dy, 1.0+dz)
+    ]
+    solid_box5 = make_box(builder, points_5)
 
-    # print('Mold2')
-    # stat = brep_explorer.create_shape_stat(mold2.Shape())
-    # brep_explorer.print_stat(stat)
+    return solid_box1, solid_box2, solid_box3, solid_box4, solid_box5
 
-    sewing = BRepBuilderAPI_Sewing(0.01, True, True, True, True)
-    sewing.SetFloatingEdgesMode(True)
-    sewing.SetNonManifoldMode(True)
-    sewing.SetFaceMode(True)
-    sewing.Add(mold1.Shape())
-    sewing.Add(mold2.Shape())
-    sewing.Perform()
 
-    sewing_shape = sewing.SewedShape()
+def compare_quads(face1, face2):
+    """
+    Compate two faces
+    """
 
-    print('Sewing')
-    stat = brep_explorer.create_shape_stat(sewing_shape)
-    brep_explorer.print_stat(stat)
+    for vert in face1:
+        if vert not in face2:
+            return False
 
-    primitives = brep_explorer.shape_disassembly(sewing_shape)
+    return True
+
+
+def remove_duple_faces(reshape, faces, new_face, face_shape):
+    """
+    Try to remove duplicity faces from two boolean operations
+    """
+    for face in faces.keys():
+        if compare_quads(face, new_face) is True:
+            original_face = faces[new_face]
+            print('Duplicity of: ', original_face)
+            print('Removing this face ...')
+            reshape.Replace(face_shape, original_face.Reversed())
+            return True
+    return False
+
+
+def remove_duple_face_shapes(shape1, shape2):
+    """
+    Try to remove duplicated faces in two shapes
+    """
+    primitives = brep_explorer.shapes_disassembly((shape1, shape2))
     # print(primitives)
     faces = {}
     brt = BRep_Tool()
     reshape = BRepTools_ReShape()
+    dupli_faces = []
     for face_shape in primitives[4].values():
         print(face_shape)
         face_traverse = traverse.Topo(face_shape)
@@ -251,32 +260,115 @@ def solid_compound(filename=None):
             pnt = brt.Pnt(topods_Vertex(vert))
             # print(idx, pnt.X(), pnt.Y(), pnt.Z())
             points.append((pnt.X(), pnt.Y(), pnt.Z()))
-        new_face = tuple(points)
+        new_face = tuple(sorted(points))
         if remove_duple_faces(reshape, faces, new_face, face_shape) is False:
             faces[new_face] = face_shape
-    print(faces)
+        else:
+            dupli_faces.append(face_shape)
+    # for key in faces.keys():
+    #     print(key)
+
+    print("Dupli faces:", dupli_faces)
+    dup_face = dupli_faces[0]
 
     # Reshaping sewing object
-    new_shape = reshape.Apply(sewing_shape)
+    new_shape1 = reshape.Apply(shape1)
+    new_shape2 = reshape.Apply(shape2)
 
-    shape_type = new_shape.ShapeType()
-    print(shape_type, brep_explorer.SHAPE_NAMES[shape_type])
+    return new_shape1, new_shape2, dup_face
 
-    print('Reshaped Sewing')
-    stat = brep_explorer.create_shape_stat(new_shape)
-    brep_explorer.print_stat(stat)
 
-    # shell = topods_Shell(new_shape)
+def find_intersected_bordering_faces(face, volume1, volume2, hint_face):
+    """
+    Try to find bordering faces
+    """
+    primitives = brep_explorer.shape_disassembly(face)
+    # print('>>>> Disassembly face:')
+    # stat = brep_explorer.create_shape_stat(face)
+    # brep_explorer.print_stat(stat)
+    from OCC.TopoDS import topods_Edge
+    print('>>> Edges:')
+    brt = BRep_Tool()
+    for edge_shape in primitives[6].values():
+        edge = TopoDS_Edge(edge_shape)
+        print('>>> TopoDS_Edge:', edge)
+        print(dir(edge))
+        print('>>>>>> edge_shape:', edge_shape)
+        print(edge_shape.ShapeType(), edge_shape.TShape())
+        # print(dir(edge_shape.TShape()))
+        # print(edge_shape.TShape().DownCast(TopoDS_Edge))
+        print(dir(edge_shape))
+        curve_handle = brt.Curve(edge_shape)[0]
+        print(curve_handle)
+        curve = curve_handle.GetObject()
+        print(curve)
+        # edge_traverse = traverse.Topo(edge_shape)
+        # vertices = edge_traverse.vertices_from_edge(edge_shape)
+        # for idx,vert in enumerate(vertices):
+        #     pnt = brt.Pnt(topods_Vertex(vert))
+        #     print(idx, pnt.X(), pnt.Y(), pnt.Z())
+    return None, None
 
-    make_solid = BRepBuilderAPI_MakeSolid()
 
-    solid = make_solid.Solid()
-    builder.MakeSolid(solid)
-    builder.Add(solid, new_shape)
+
+def solid_compound(filename=None):
+    """
+    Generate and display solid object created from bspline surface.
+    """
+
+    # Create Builder first
+    builder = BRep_Builder()
+
+    solid_box1, solid_box2, solid_box3, solid_box4, solid_box5 = create_test_boxes(builder)
+
+    mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
+    mold2 = BRepAlgoAPI_Cut(solid_box1, solid_box3)
+
+    # print('Mold1')
+    # stat = brep_explorer.create_shape_stat(mold1.Shape())
+    # brep_explorer.print_stat(stat)
+    # print('Mold2')
+    # stat = brep_explorer.create_shape_stat(mold2.Shape())
+    # brep_explorer.print_stat(stat)
+
+    new_mold1, new_mold2, dup_face1 = remove_duple_face_shapes(mold1.Shape(), mold2.Shape())
+
+    # shape_type = new_mold1.ShapeType()
+    # print(shape_type, brep_explorer.SHAPE_NAMES[shape_type])
+
+    print('Reshaped Mol1')
+    stat1 = brep_explorer.create_shape_stat(new_mold1)
+    brep_explorer.print_stat(stat1)
+
+    print('Reshaped Mol2')
+    stat2 = brep_explorer.create_shape_stat(new_mold2)
+    brep_explorer.print_stat(stat2)
+
+    # Important note: it is necessary to do "cutting" on shape without removed
+    # doubles. In this case you have to use mold2, NOT new_mold. Otherwise it
+    # will create strange results
+    mold3 = BRepAlgoAPI_Cut(mold2.Shape(), solid_box4)
+    mold4 = BRepAlgoAPI_Cut(mold2.Shape(), solid_box5)
+
+    new_mold3, new_mold4, dup_face2 = remove_duple_face_shapes(mold3.Shape(), mold4.Shape())
+
+    print('Reshaped Mol3')
+    stat3 = brep_explorer.create_shape_stat(new_mold3)
+    brep_explorer.print_stat(stat3)
+
+    print('Reshaped Mol4')
+    stat4 = brep_explorer.create_shape_stat(new_mold4)
+    brep_explorer.print_stat(stat4)
 
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
-    builder.Add(compound, solid)
+    builder.Add(compound, new_mold1)
+    # builder.Add(compound, new_mold2) ... replaced by modl3 and mold4
+    builder.Add(compound, new_mold3)
+    builder.Add(compound, new_mold4)
+
+    # Try to find two intersection points
+    # iface1, iface2 = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
 
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
@@ -285,8 +377,23 @@ def solid_compound(filename=None):
     if filename is not None:
          breptools_Write(compound, filename)
 
-    display.DisplayShape(mold1.Shape(), color='red', update=True)
-    display.DisplayShape(mold2.Shape(), color='blue', update=True)
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
+
+    ais_shell = display.DisplayShape(new_mold1, color='red', update=True)
+    display.Context.SetTransparency(ais_shell, 0.7)
+    # ais_shell = display.DisplayShape(new_mold2, color='blue', update=True)
+    # display.Context.SetTransparency(ais_shell, 0.7)
+    ais_shell = display.DisplayShape(new_mold3, color='blue', update=True)
+    display.Context.SetTransparency(ais_shell, 0.7)
+    ais_shell = display.DisplayShape(new_mold4, color='yellow', update=True)
+    display.Context.SetTransparency(ais_shell, 0.7)
+    # ais_shell = display.DisplayShape(mold4.Shape(), color='yellow', update=True)
+    # display.Context.SetTransparency(ais_shell, 0.7)
+    display.DisplayShape(dup_face1, color='green')
+    display.DisplayShape(dup_face2, color='orange')
+    # display.DisplayShape(mold3.Shape(), color='green', update=True)
+    # display.DisplayShape(mold4.Shape(), color='yellow', update=True)
 
     start_display()
 
