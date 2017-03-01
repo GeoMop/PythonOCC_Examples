@@ -29,6 +29,8 @@ from OCC.TopAbs import TopAbs_WIRE
 from OCC.ShapeFix import ShapeFix_Shell
 from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 from OCC.BRepBuilderAPI import BRepBuilderAPI_Sewing
+from OCC.TopoDS import topods_Edge, topods_Vertex
+from OCC.GeomAPI import GeomAPI_ProjectPointOnCurve
 import argparse
 
 import brep_explorer
@@ -51,7 +53,7 @@ def create_bspline_surface(array):
         vmult = temp.VMultiplicities().GetObject().Array1()
         udeg = temp.UDegree()
         vdeg = temp.VDegree()
-        bspline_surface = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0 )
+        bspline_surface = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, False, False )
     return bspline_surface
 
 
@@ -278,36 +280,108 @@ def remove_duple_face_shapes(shape1, shape2):
     return new_shape1, new_shape2, dup_face
 
 
-def find_intersected_bordering_faces(face, volume1, volume2, hint_face):
+def find_intersected_bordering_faces(face, volume1, volume2, hint_face, tolerance=0.00001):
     """
     Try to find bordering faces
     """
-    primitives = brep_explorer.shape_disassembly(face)
+
+    # Get bordering points from face
+    primitives0 = brep_explorer.shape_disassembly(face)
+    print('>>> Verts:')
+    brt = BRep_Tool()
+    border_points = []
+    for vert_shape in primitives0[7].values():
+        vert = topods_Vertex(vert_shape)
+        pnt = brt.Pnt(topods_Vertex(vert))
+        print('Vertex:', pnt.X(), pnt.Y(), pnt.Z())
+        border_points.append(pnt)
+    print('>>> Border points:', border_points)
+
+    primitives1 = brep_explorer.shape_disassembly(face)
     # print('>>>> Disassembly face:')
     # stat = brep_explorer.create_shape_stat(face)
     # brep_explorer.print_stat(stat)
-    from OCC.TopoDS import topods_Edge
-    print('>>> Edges:')
+
     brt = BRep_Tool()
-    for edge_shape in primitives[6].values():
-        edge = TopoDS_Edge(edge_shape)
-        print('>>> TopoDS_Edge:', edge)
-        print(dir(edge))
-        print('>>>>>> edge_shape:', edge_shape)
-        print(edge_shape.ShapeType(), edge_shape.TShape())
-        # print(dir(edge_shape.TShape()))
-        # print(edge_shape.TShape().DownCast(TopoDS_Edge))
-        print(dir(edge_shape))
-        curve_handle = brt.Curve(edge_shape)[0]
-        print(curve_handle)
+    curves = []
+    for edge_shape in primitives1[6].values():
+        edge = topods_Edge(edge_shape)
+        curve_handle = brt.Curve(edge)[0]
         curve = curve_handle.GetObject()
-        print(curve)
+        curves.append(curve)
         # edge_traverse = traverse.Topo(edge_shape)
         # vertices = edge_traverse.vertices_from_edge(edge_shape)
         # for idx,vert in enumerate(vertices):
         #     pnt = brt.Pnt(topods_Vertex(vert))
         #     print(idx, pnt.X(), pnt.Y(), pnt.Z())
-    return None, None
+
+    # Get candidate points from hint_face
+    primitives2 = brep_explorer.shape_disassembly(hint_face)
+    brt = BRep_Tool()
+    cand_points = []
+    for vert_shape in primitives2[7].values():
+        vert = topods_Vertex(vert_shape)
+        pnt = brt.Pnt(topods_Vertex(vert))
+        # print('Vertex:', pnt.X(), pnt.Y(), pnt.Z())
+        cand_points.append(pnt)
+
+    # projection = GeomAPI_ProjectPointOnCurve(points[0],
+    #                                          curves[0].GetHandle())
+    # print('>>>> Projection:', projection)
+    # print(dir(projection))
+    # print('!!!!', projection.LowerDistanceParameter(), projection.LowerDistance(), projection.NearestPoint())
+    # extr = projection.Extrema()
+    # print('Extrema:', extr)
+    # print(dir(extr))
+
+    # Iterate over all curves and try to find intersection points
+    inter_points = []
+    for curve in curves:
+        distances = {}
+        # Compute distances between candidate points and curve
+        for point in cand_points:
+            proj = GeomAPI_ProjectPointOnCurve(point, curve.GetHandle())
+            # print(point.X(), point.Y(), point.Z(), proj.LowerDistance())
+            distances[proj.LowerDistance()] = point
+        # Get candidate with lowest distance
+        min_dist = min(distances.keys())
+        # When distance is lower then tolerance, then we found point at intersection
+        if min_dist <= tolerance:
+            inter_points.append(distances[min_dist])
+
+    if len(inter_points) == 0:
+        return []
+
+    # When some intersection points was found, then extedn list of border points
+    # with these intersection points
+    border_points.extend(inter_points)
+
+    border_coords = [(pnt.X(), pnt.Y(), pnt.Z()) for pnt in border_points]
+
+    # Get list of all faces in volumes
+    primitives3 = brep_explorer.shapes_disassembly((volume1, volume2))
+    brt = BRep_Tool()
+    border_faces = []
+    for face_shape in primitives3[4].values():
+        face_traverse = traverse.Topo(face_shape)
+        vertices = face_traverse.vertices_from_face(face_shape)
+        face_coords = []
+        for idx,vert in enumerate(vertices):
+            pnt = brt.Pnt(topods_Vertex(vert))
+            # print(idx, pnt.X(), pnt.Y(), pnt.Z())
+            face_coords.append((pnt.X(), pnt.Y(), pnt.Z()))
+        
+        # TODO: use better ceck in coordinates mateches then: coo in border_coords
+        # e.g.: use some distance and tolerance
+        res = [coo in border_coords for coo in face_coords]
+        if all(res) is True:
+            border_faces.append(face_shape)
+
+    print('>>>>>> Border faces: ', border_faces)
+    # TODO: return these two faces and check if these faces covers
+    # original face completely
+
+    return inter_points
 
 
 
@@ -369,6 +443,7 @@ def solid_compound(filename=None):
 
     # Try to find two intersection points
     # iface1, iface2 = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
+    inter_points = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
 
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
@@ -392,6 +467,8 @@ def solid_compound(filename=None):
     # display.Context.SetTransparency(ais_shell, 0.7)
     display.DisplayShape(dup_face1, color='green')
     display.DisplayShape(dup_face2, color='orange')
+    for pnt in inter_points:
+        display.DisplayShape(pnt)
     # display.DisplayShape(mold3.Shape(), color='green', update=True)
     # display.DisplayShape(mold4.Shape(), color='yellow', update=True)
 
