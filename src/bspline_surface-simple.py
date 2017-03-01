@@ -47,16 +47,14 @@ def bezier_surfaces(event=None):
     BB = GeomConvert_CompBezierSurfacesToBSplineSurface(bezierarray)
     if BB.IsDone():
         poles = BB.Poles().GetObject().Array2()
-        print(type(poles))
         uknots = BB.UKnots().GetObject().Array1()
-        print(type(uknots))
         vknots = BB.VKnots().GetObject().Array1()
         umult = BB.UMultiplicities().GetObject().Array1()
         vmult = BB.VMultiplicities().GetObject().Array1()
         udeg = BB.UDegree()
         vdeg = BB.VDegree()
 
-        BSPLSURF = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0 )
+        BSPLSURF = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, False, False )
         BSPLSURF.Translate(gp_Vec(0,0,2))
 
     display.DisplayShape(BSPLSURF.GetHandle(), update=True)
