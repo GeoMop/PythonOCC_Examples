@@ -50,7 +50,7 @@ def create_bspline_surface(array):
         vmult = temp.VMultiplicities().GetObject().Array1()
         udeg = temp.UDegree()
         vdeg = temp.VDegree()
-        bspline_surface = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0 )
+        bspline_surface = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, False, False )
     return bspline_surface
 
 
