@@ -3,6 +3,8 @@ This module is able to create simple solid object (cube). Each side of
 cube is bspline surface. This solid object can be exported to BREP file.
 """
 
+from __future__ import print_function
+
 from OCC.gp import *
 from OCC.Geom import *
 from OCC.TColGeom import *
