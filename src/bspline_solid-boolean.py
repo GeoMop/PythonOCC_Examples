@@ -217,9 +217,9 @@ def create_test_boxes(builder):
     return solid_box1, solid_box2, solid_box3, solid_box4, solid_box5
 
 
-def compare_quads(face1, face2):
+def compare_faces(face1, face2):
     """
-    Compate two faces
+    Compare two faces
     """
 
     for vert in face1:
@@ -234,7 +234,7 @@ def remove_duple_faces(reshape, faces, new_face, face_shape):
     Try to remove duplicity faces from two boolean operations
     """
     for face in faces.keys():
-        if compare_quads(face, new_face) is True:
+        if compare_faces(face, new_face) is True:
             original_face = faces[new_face]
             print('Duplicity of: ', original_face)
             print('Removing this face ...')
@@ -242,6 +242,19 @@ def remove_duple_faces(reshape, faces, new_face, face_shape):
             return True
     return False
 
+
+def points_of_face(face_shape):
+    """
+    Return sorted tuple of face points
+    """
+    face_traverse = traverse.Topo(face_shape)
+    vertices = face_traverse.vertices_from_face(face_shape)
+    points = []
+    brt = BRep_Tool()
+    for vert in vertices:
+        pnt = brt.Pnt(topods_Vertex(vert))
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    return tuple(sorted(points))
 
 def remove_duple_face_shapes(shape1, shape2):
     """
@@ -255,16 +268,9 @@ def remove_duple_face_shapes(shape1, shape2):
     dupli_faces = []
     for face_shape in primitives[4].values():
         print(face_shape)
-        face_traverse = traverse.Topo(face_shape)
-        vertices = face_traverse.vertices_from_face(face_shape)
-        points = []
-        for idx,vert in enumerate(vertices):
-            pnt = brt.Pnt(topods_Vertex(vert))
-            # print(idx, pnt.X(), pnt.Y(), pnt.Z())
-            points.append((pnt.X(), pnt.Y(), pnt.Z()))
-        new_face = tuple(sorted(points))
-        if remove_duple_faces(reshape, faces, new_face, face_shape) is False:
-            faces[new_face] = face_shape
+        points = points_of_face(face_shape)
+        if remove_duple_faces(reshape, faces, points, face_shape) is False:
+            faces[points] = face_shape
         else:
             dupli_faces.append(face_shape)
     # for key in faces.keys():
@@ -278,6 +284,74 @@ def remove_duple_face_shapes(shape1, shape2):
     new_shape2 = reshape.Apply(shape2)
 
     return new_shape1, new_shape2, dup_face
+
+def compare_edges(edge1, edge2):
+    """
+    Compare two faces
+    """
+
+    for vert in edge1:
+        if vert not in edge2:
+            return False
+
+    return True
+
+
+def remove_duple_edges(reshape, edges, new_edges, edge_shape):
+    """
+    Try to remove duplicity edges from two boolean operations
+    """
+    for edge in edges.keys():
+        if compare_edges(edge, new_edges) is True:
+            original_edge = edges[new_edges]
+            print('Duplicity of: ', original_edge)
+            print('Removing this edge ...')
+            reshape.Replace(edge_shape, original_edge)
+            return True
+    return False
+
+
+def points_of_edge(edge_shape):
+    """
+    Return sorted tuple of edge points
+    """
+    edge_traverse = traverse.Topo(edge_shape)
+    vertices = edge_traverse.vertices_from_edge(edge_shape)
+    points = []
+    brt = BRep_Tool()
+    for vert in vertices:
+        pnt = brt.Pnt(topods_Vertex(vert))
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    return tuple(sorted(points))
+
+
+def remove_duple_edge_shapes(shape1, shape2):
+    """
+    Try to remove duplicated edges in two shapes
+    """
+    primitives = brep_explorer.shapes_disassembly((shape1, shape2))
+    # print(primitives)
+    edges = {}
+    brt = BRep_Tool()
+    reshape = BRepTools_ReShape()
+    dupli_edges = []
+    for edge_shape in primitives[6].values():
+        print(edge_shape)
+        points = points_of_edge(edge_shape)
+        if remove_duple_edges(reshape, edges, points, edge_shape) is False:
+            edges[points] = edge_shape
+        else:
+            dupli_edges.append(edge_shape)
+    # for key in edge.keys():
+    #     print(key)
+
+    print("Dupli edges:", dupli_edges)
+
+    # Reshaping sewing object
+    new_shape1 = reshape.Apply(shape1)
+    new_shape2 = reshape.Apply(shape2)
+
+    return new_shape1, new_shape2
 
 
 def find_intersected_bordering_faces(face, volume1, volume2, hint_face, tolerance=0.00001):
@@ -293,9 +367,7 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
     for vert_shape in primitives0[7].values():
         vert = topods_Vertex(vert_shape)
         pnt = brt.Pnt(topods_Vertex(vert))
-        print('Vertex:', pnt.X(), pnt.Y(), pnt.Z())
         border_points.append(pnt)
-    print('>>> Border points:', border_points)
 
     primitives1 = brep_explorer.shape_disassembly(face)
     # print('>>>> Disassembly face:')
@@ -325,15 +397,6 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
         # print('Vertex:', pnt.X(), pnt.Y(), pnt.Z())
         cand_points.append(pnt)
 
-    # projection = GeomAPI_ProjectPointOnCurve(points[0],
-    #                                          curves[0].GetHandle())
-    # print('>>>> Projection:', projection)
-    # print(dir(projection))
-    # print('!!!!', projection.LowerDistanceParameter(), projection.LowerDistance(), projection.NearestPoint())
-    # extr = projection.Extrema()
-    # print('Extrema:', extr)
-    # print(dir(extr))
-
     # Iterate over all curves and try to find intersection points
     inter_points = []
     for curve in curves:
@@ -352,7 +415,7 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
     if len(inter_points) == 0:
         return []
 
-    # When some intersection points was found, then extedn list of border points
+    # When some intersection points was found, then extend list of border points
     # with these intersection points
     border_points.extend(inter_points)
 
@@ -371,18 +434,57 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
             # print(idx, pnt.X(), pnt.Y(), pnt.Z())
             face_coords.append((pnt.X(), pnt.Y(), pnt.Z()))
         
-        # TODO: use better ceck in coordinates mateches then: coo in border_coords
+        # TODO: use better check in coordinates matches then: `coo in border_coords`
         # e.g.: use some distance and tolerance
         res = [coo in border_coords for coo in face_coords]
         if all(res) is True:
             border_faces.append(face_shape)
 
     print('>>>>>> Border faces: ', border_faces)
-    # TODO: return these two faces and check if these faces covers
-    # original face completely
+    # TODO: Check if these faces covers original face completely
 
-    return inter_points
+    return border_faces
 
+
+def replace_face_with_splitted_faces(builder, shape, face, splitted_faces):
+    """
+    Try to create new shape that does not include face, but it
+    includes instead splitted_faces
+    """
+    points = points_of_face(face)
+
+    sewing = BRepBuilderAPI_Sewing(0.01, True, True, True, False)
+    sewing.SetFloatingEdgesMode(True)
+    # Get list of all faces in shape
+    primitives = brep_explorer.shape_disassembly(shape)    
+    brt = BRep_Tool()
+    border_faces = []
+    for face_shape in primitives[4].values():
+        if points_of_face(face_shape) != points:
+            face = topods_Face(face_shape)
+            sewing.Add(face)
+        else:
+            print('>>>> NOT INCLUDING FACE:', face_shape)
+    for face_shape in splitted_faces:
+        face = topods_Face(face_shape)
+        sewing.Add(face)
+    sewing.Perform()
+    sewing_shape = sewing.SewedShape()
+    try:
+        shell = topods_Shell(sewing_shape)
+    except RuntimeError:
+        return None
+    else:
+        print('Huraaaa!!!!')
+    make_solid = BRepBuilderAPI_MakeSolid()
+    make_solid.Add(shell)
+
+    solid = make_solid.Solid()
+
+    builder.MakeSolid(solid)
+    builder.Add(solid, shell)
+
+    return solid
 
 
 def solid_compound(filename=None):
@@ -434,16 +536,25 @@ def solid_compound(filename=None):
     stat4 = brep_explorer.create_shape_stat(new_mold4)
     brep_explorer.print_stat(stat4)
 
+    # Try to find two intersection points
+    inter_faces = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
+
+    new_mold1 = replace_face_with_splitted_faces(builder, new_mold1, dup_face1, inter_faces)
+
+    # Remove duplicities in faces
+    new_mold1, new_mold3, dup_face3 = remove_duple_face_shapes(new_mold1, new_mold3)
+    new_mold1, new_mold4, dup_face4 = remove_duple_face_shapes(new_mold1, new_mold4)
+
+    # Remove duplicities in edges
+    # new_mold1, new_mold3 = remove_duple_edge_shapes(new_mold1, new_mold3)
+    # new_mold1, new_mold4 = remove_duple_edge_shapes(new_mold1, new_mold4)
+
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
     builder.Add(compound, new_mold1)
     # builder.Add(compound, new_mold2) ... replaced by modl3 and mold4
     builder.Add(compound, new_mold3)
     builder.Add(compound, new_mold4)
-
-    # Try to find two intersection points
-    # iface1, iface2 = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
-    inter_points = find_intersected_bordering_faces(dup_face1, new_mold3, new_mold4, dup_face2)
 
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
@@ -463,12 +574,12 @@ def solid_compound(filename=None):
     display.Context.SetTransparency(ais_shell, 0.7)
     ais_shell = display.DisplayShape(new_mold4, color='yellow', update=True)
     display.Context.SetTransparency(ais_shell, 0.7)
-    # ais_shell = display.DisplayShape(mold4.Shape(), color='yellow', update=True)
+    ais_shell = display.DisplayShape(mold4.Shape(), color='yellow', update=True)
     # display.Context.SetTransparency(ais_shell, 0.7)
-    display.DisplayShape(dup_face1, color='green')
-    display.DisplayShape(dup_face2, color='orange')
-    for pnt in inter_points:
-        display.DisplayShape(pnt)
+    # display.DisplayShape(dup_face1, color='green')
+    # display.DisplayShape(dup_face2, color='orange')
+    # for face in inter_faces:
+    #     display.DisplayShape(face, color='green')
     # display.DisplayShape(mold3.Shape(), color='green', update=True)
     # display.DisplayShape(mold4.Shape(), color='yellow', update=True)
 
