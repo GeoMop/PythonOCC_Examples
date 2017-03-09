@@ -269,50 +269,65 @@ def points_of_wire(wire_shapes):
     """
     wires = {}
     edges = {}
+    verts = {}
     for wire_shape in wire_shapes:
         print(wire_shape)
         edge_shapes = edges_of_wire(wire_shape)
         edges_points = []
         for edge_shape in edge_shapes:
-            verts = verts_of_edge(edge_shape)
-            points = tuple(sorted(coords_from_vert(vert) for vert in verts))
+            edge_verts = verts_of_edge(edge_shape)
+            for vert in edge_verts:
+                vert_coords = coords_from_vert(vert)
+                if vert_coords not in verts:
+                    verts[vert_coords] = vert
+            points = tuple(sorted(coords_from_vert(vert) for vert in edge_verts))
             edges[points] = edge_shape
             edges_points.append(points)
         wires[tuple(edges_points)] = wire_shape
-    return wires, edges
+    return wires, edges, verts
+
+
+def remove_duple_verts(reshape, new_vert_shape, old_vert_shape):
+    """
+    Try to remove duplicated verticies
+    """
 
 
 def remove_duple_wires_and_edges(reshape, new_wire_shapes, old_wire_shapes):
     """
+    Try to remove duple wires and edges
     """
-    new_wires, new_edges = points_of_wire(new_wire_shapes)
-    old_wires, old_edges = points_of_wire(old_wire_shapes)
+    new_wires, new_edges, new_verts = points_of_wire(new_wire_shapes)
+    old_wires, old_edges, old_verts = points_of_wire(old_wire_shapes)
 
-    for new_wire_key, new_wire_shape in new_wires.items():
-        old_wire_shape = old_wires[new_wire_key]
-        reshape.Replace(old_wire_shape, new_wire_shape)
+    for new_vert_key, new_vert_shape in new_verts.items():
+        old_vert_shape = old_verts[new_vert_key]
+        reshape.Replace(old_vert_shape, new_vert_shape)
 
     for new_edge_key, new_edge_shape in new_edges.items():
         old_edge_shape = old_edges[new_edge_key]
         reshape.Replace(old_edge_shape, new_edge_shape)
 
+    for new_wire_key, new_wire_shape in new_wires.items():
+        old_wire_shape = old_wires[new_wire_key]
+        reshape.Replace(old_wire_shape, new_wire_shape)
+
 
 def remove_duple_faces(reshape, faces, face_points, face_shape):
     """
-    Try to remove duplicity faces from two boolean operations
+    Try to remove duplicity of face_shape
     """
     for face in faces.keys():
         if compare_faces(face, face_points) is True:
             new_face_shape = faces[face_points]
-            print('Duplicity of: ', new_face_shape)
-            print('Removing this face ...')
-            reshape.Replace(face_shape, new_face_shape.Reversed())
+            print('Removing this duplicity face: ', face_shape, ' with: ' ,new_face_shape)
 
             new_wires = wires_of_face(new_face_shape)
             old_wires = wires_of_face(face_shape)
-
             remove_duple_wires_and_edges(reshape, new_wires, old_wires)
-            
+
+            reshape.Replace(face_shape, new_face_shape.Reversed())
+
             return True
     return False
 
@@ -377,6 +392,13 @@ def points_of_edge(edge_shape):
     return tuple(points)
 
 
+def shells_of_solid(solid_shape):
+    """
+    """
+    solid_traverse = traverse.Topo(solid_shape)
+    return solid_traverse.shells()
+
+
 def remove_duple_face_shapes(*shapes):
     """
     Try to remove duplicated faces in two shapes
@@ -384,15 +406,10 @@ def remove_duple_face_shapes(*shapes):
     primitives = brep_explorer.shapes_disassembly(shapes)
     # print(primitives)
     faces = {}
-    edges = {}
-    dupli_edges = []
-    dupli_wires = []
     dupli_faces = []
 
     brt = BRep_Tool()
     reshape = BRepTools_ReShape()
-
-    # print("Dupli edges:", dupli_edges)
 
     # Faces
     for face_shape in primitives[4].values():
@@ -406,39 +423,13 @@ def remove_duple_face_shapes(*shapes):
 
     print("Dupli faces:", dupli_faces)
 
-    # Wires
-    # for wire_shape in primitives[5].values():
-    #     print(wire_shape)
-    #     edges = edges_of_wire(wire_shape)
-
-    # Edges
-    # for edge_shape in primitives[6].values():
-    #     print(edge_shape)
-    #     points = points_of_edge(edge_shape)
-    #     if remove_duple_edges(reshape, edges, points, edge_shape) is False:
-    #         edges[tuple(sorted(points))] = edge_shape
-    #     else:
-    #         dupli_edges.append(edge_shape)
-
-    # # Vertices
-    # dupli_verts = []
-    # for vert_shape in primitives[7].values():
-    #     print(vert_shape)
-    #     point = brt.Pnt(topods_Vertex(vert_shape))
-    #     if point in dupli_verts:
-    #         points[point] = vert_shape
-    #     else:
-    #         dupli_edges.append(vert_shape)
-
-    # print("Dupli edges:", dupli_verts)
-
     # Reshaping all shapes
     new_shapes = []
     for shape in shapes:
         new_shape = reshape.Apply(shape)
         new_shapes.append(new_shape)
 
-    return new_shapes, dupli_faces, dupli_edges
+    return new_shapes, dupli_faces
 
 
 def find_intersected_bordering_faces(face, volume1, volume2, hint_face, tolerance=0.00001):
@@ -594,7 +585,7 @@ def solid_compound(filename=None):
     # stat = brep_explorer.create_shape_stat(mold2.Shape())
     # brep_explorer.print_stat(stat)
 
-    new_molds, dup_faces, dup_edges = remove_duple_face_shapes(mold1.Shape(), mold2.Shape())
+    new_molds, dup_faces = remove_duple_face_shapes(mold1.Shape(), mold2.Shape())
     dup_face1 = dup_faces[0]
 
     # shape_type = new_mold1.ShapeType()
@@ -614,7 +605,7 @@ def solid_compound(filename=None):
     mold3 = BRepAlgoAPI_Cut(molds[1].Shape(), solid_box4)
     mold4 = BRepAlgoAPI_Cut(molds[1].Shape(), solid_box5)
 
-    _new_molds, _dup_faces, _dup_edges = remove_duple_face_shapes(mold3.Shape(), mold4.Shape())
+    _new_molds, _dup_faces = remove_duple_face_shapes(mold3.Shape(), mold4.Shape())
     dup_face2 = _dup_faces[0]
 
     new_molds.extend(_new_molds)
@@ -634,7 +625,7 @@ def solid_compound(filename=None):
     new_molds[0] = new_mold
 
     # Remove duplicities in faces
-    new_molds, dup_faces, dup_edges = remove_duple_face_shapes(new_molds[0], new_molds[2], new_molds[3])
+    new_molds, dup_faces = remove_duple_face_shapes(new_molds[0], new_molds[2], new_molds[3])
 
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
