@@ -208,20 +208,20 @@ def solid_compound(filename=None):
     # comp_solid = make_compsolid.CompSolid()
     # builder.MakeCompSolid(comp_solid)
 
-    compsolid = TopoDS_CompSolid()
-    print(dir(compsolid))
-    builder.MakeCompSolid(compsolid)
+    # compsolid = TopoDS_CompSolid()
+    # print(dir(compsolid))
+    # builder.MakeCompSolid(compsolid)
 
-    shells = bspline_solid_boolean.shells_of_solid(solids[0])
-    for shell in shells:
-        builder.Add(compsolid, shell)
-    # builder.Add(compsolid, solids[0])
-    # builder.Add(compsolid, solids[1])
+    # shells = bspline_solid_boolean.shells_of_solid(solids[0])
+    # for shell in shells:
+    #     builder.Add(compsolid, shell)
     
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
-    # builder.Add(compound, compsolid)
-    builder.Add(compound, comp_solid)
+    builder.Add(compound, solids[0])
+    builder.Add(compound, solids[1])
+
+    # builder.Add(compound, comp_solid)
 
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
