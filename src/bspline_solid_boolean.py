@@ -29,7 +29,7 @@ from OCC.TopAbs import TopAbs_WIRE
 from OCC.ShapeFix import ShapeFix_Shell
 from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 from OCC.BRepBuilderAPI import BRepBuilderAPI_Sewing
-from OCC.TopoDS import topods_Edge, topods_Vertex
+from OCC.TopoDS import topods_Wire, topods_Edge, topods_Vertex
 from OCC.GeomAPI import GeomAPI_ProjectPointOnCurve
 import argparse
 
@@ -241,6 +241,7 @@ def edges_of_wire(wire_shape):
     """
     Return tuple of wire edges
     """
+    # TODO: return edges with orientation stored in wire
     wire_traverse = traverse.Topo(wire_shape)
     return tuple(wire_traverse.edges_from_wire(wire_shape))
 
@@ -262,7 +263,7 @@ def coords_from_vert(vert_shape):
     return (pnt.X(), pnt.Y(), pnt.Z())
 
 
-def points_of_wire(wire_shapes):
+def entities_of_wire(wire_shapes):
     """
     Return two dictionaries of wires and edges, keys of these two dictionaries
     are coordinates of verticies
@@ -280,25 +281,126 @@ def points_of_wire(wire_shapes):
                 vert_coords = coords_from_vert(vert)
                 if vert_coords not in verts:
                     verts[vert_coords] = vert
-            points = tuple(sorted(coords_from_vert(vert) for vert in edge_verts))
-            edges[points] = edge_shape
+            points = tuple(coords_from_vert(vert) for vert in edge_verts)
+            edges[tuple(sorted(points))] = edge_shape
             edges_points.append(points)
         wires[tuple(edges_points)] = wire_shape
     return wires, edges, verts
 
 
-def remove_duple_verts(reshape, new_vert_shape, old_vert_shape):
+def norm_vec(vec1, vec2):
     """
-    Try to remove duplicated verticies
+    Compute normal vector
     """
+    vec = (
+        vec1[1] * vec2[2] - vec2[1] * vec1[2],
+        -(vec1[0] * vec2[2] - vec2[0] * vec1[2]),
+        vec1[0] * vec2[1] - vec2[0] * vec1[1]
+    )
+    vec_len = math.sqrt(vec[0]**2 + vec[1]**2, vec[2]**2)
+    norm_vec = (vec[0]/vec_len, vec[1]/vec_len, vec[2]/vec_len)
+    return norm_vec
 
 
-def remove_duple_wires_and_edges(reshape, new_wire_shapes, old_wire_shapes):
+def normals_of_wire(wire_edge_coords):
+    """
+    Compute list of wire normals
+    """
+
+    vectors = []
+    prev_edge = None
+    for edge in wire_edge_coords:
+        if prev_edge is not None:
+            vec1 = (
+                prev_edge[0][0] - prev_edge[1][0],
+                prev_edge[0][1] - prev_edge[1][1],
+                prev_edge[0][2] - prev_edge[1][2],
+            )
+            vec2 = (
+                edge[0][0] - edge[1][0],
+                edge[0][1] - edge[1][1],
+                edge[0][2] - edge[1][2],
+            )
+            vectors.append(norm_vec(vec1, vec2))
+
+
+
+def fix_bordering_wires(shape, face_shape):
+    """
+    When bordering face, wires, edges and verticies were replaced,
+    then it is neccessary to fix order of edges in bordering wires in shape.
+    """
+    fixed_wires = []
+
+    primitives = brep_explorer.shape_disassembly(shape)
+
+    # Creat list of wires "to be fixed" (potentionaly)
+    wire_shapes_tbf = []
+    for wire_shape in primitives[5].values():
+        wire_shapes_tbf.append(topods_Wire(wire_shape))
+    old_wires, old_edges, old_verts = entities_of_wire(wire_shapes_tbf)
+
+    # Get list of wires at border of shape
+    wire_shapes = wires_of_face(face_shape)
+    new_wires, new_edges, new_verts = entities_of_wire(wire_shapes)
+    # Go through all wires of bordering face (usualy only one wire)
+    for wire_key, wire_shape in new_wires.items():
+        print('>> Bordering wire:', wire_shape)
+        # Go through all edges of bordering wire
+        wire_fixtures = {}
+        for edge_coords in wire_key:
+            new_edge_coords = tuple(sorted(edge_coords))
+            new_edge = new_edges[new_edge_coords]
+            print('>>> Bordering edge:', edge_coords, new_edge)
+            # Try to find this edge in other wires
+            for old_wire_key, old_wire in old_wires.items():
+                # Old wire can't be same as wire from bordering face
+                # This wire is all right and there is no need to fix it
+                if wire_key == old_wire_key:
+                    print('>>>> No fixing of bordering wire:', old_wire)
+                    continue
+                # Try to find the edge in all edges of old wire
+                for old_edge_coord in old_wire_key:
+                    # Is it the edge with same verticies?
+                    if tuple(sorted(old_edge_coord)) == new_edge_coords:
+                        # Hurray! Old wire containing edge from bordering wire was found
+                        print('>>>> Old Wire to be fixed:', old_wire_key, old_wire)
+                        # TODO: check for wrong direction of edges
+                        wire_fixtures[old_wire_key] = old_wire
+                        break
+
+        all_edges = []
+        common_edges = []
+        for old_wire_key, old_wire in old_wires.items():
+            if old_wire_key not in wire_fixtures.keys():
+                print('!!!! No fixing of bordering/oposite wire:', old_wire)
+            else:
+                print('^^^^ Edges of wrong wire:', old_wire_key)
+                if len(all_edges) > 0:
+                    for edge in old_wire_key:
+                        if edge in all_edges:
+                            common_edges.append(edge)
+                all_edges.extend(old_wire_key)
+                all_edges = list(set(all_edges))
+
+        print('## Common edges:', common_edges)
+
+    reshape = BRepTools_ReShape()
+    for wire_key, fixed_wire in fixed_wires:
+        for old_wire_key, old_wire in old_wires.items():
+            if old_wire_key == wire_key:
+                print('### Replace!!!')
+                reshape.Replace(old_wire, fixed_wire)
+    new_shape = reshape.Apply(shape)
+    return new_shape
+
+
+def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
     """
     Try to remove duple wires and edges
     """
-    new_wires, new_edges, new_verts = points_of_wire(new_wire_shapes)
-    old_wires, old_edges, old_verts = points_of_wire(old_wire_shapes)
+    new_wires, new_edges, new_verts = entities_of_wire(new_wire_shapes)
+    old_wires, old_edges, old_verts = entities_of_wire(old_wire_shapes)
 
     for new_vert_key, new_vert_shape in new_verts.items():
         old_vert_shape = old_verts[new_vert_key]
@@ -324,7 +426,7 @@ def remove_duple_faces(reshape, faces, face_points, face_shape):
 
             new_wires = wires_of_face(new_face_shape)
             old_wires = wires_of_face(face_shape)
-            remove_duple_wires_and_edges(reshape, new_wires, old_wires)
+            remove_duple_wires_edges_verts(reshape, new_wires, old_wires)
 
             reshape.Replace(face_shape, new_face_shape.Reversed())
 
@@ -344,59 +446,6 @@ def points_of_face(face_shape):
         pnt = brt.Pnt(topods_Vertex(vert))
         points.append((pnt.X(), pnt.Y(), pnt.Z()))
     return tuple(sorted(points))
-
-
-def compare_edges(edge1, edge2):
-    """
-    Compare two faces. Return 1, when edges are same. Return -1, when
-    edges are same, but reversed. Othwerwise return 0.
-    """
-    if edge1[0] == edge2[0] and edge1[1] == edge2[1]:
-        return 1
-    elif edge1[0] == edge2[1] and edge1[1] == edge2[0]:
-        return -1
-    else:
-        return 0
-
-
-def remove_duple_edges(reshape, edges, new_edge, edge_shape):
-    """
-    Try to remove duplicity edges from two boolean operations
-    """
-    for edge in edges.keys():
-        ret = compare_edges(edge, new_edge)
-        if ret != 0:
-            original_edge = edges[tuple(sorted(new_edge))]
-            print('Duplicity of: ', original_edge)
-            if ret == 1:
-                print('Removing this edge ...')
-                reshape.Replace(edge_shape, original_edge)
-            elif ret == -1:
-                print('Removing this edge reversed ...')
-                reshape.Replace(edge_shape, original_edge.Reversed())
-            return True
-    return False
-
-
-def points_of_edge(edge_shape):
-    """
-    Return sorted tuple of edge points
-    """
-    edge_traverse = traverse.Topo(edge_shape)
-    vertices = edge_traverse.vertices_from_edge(edge_shape)
-    points = []
-    brt = BRep_Tool()
-    for vert in vertices:
-        pnt = brt.Pnt(topods_Vertex(vert))
-        points.append((pnt.X(), pnt.Y(), pnt.Z()))
-    return tuple(points)
-
-
-def shells_of_solid(solid_shape):
-    """
-    """
-    solid_traverse = traverse.Topo(solid_shape)
-    return solid_traverse.shells()
 
 
 def remove_duple_face_shapes(*shapes):
@@ -425,8 +474,12 @@ def remove_duple_face_shapes(*shapes):
 
     # Reshaping all shapes
     new_shapes = []
-    for shape in shapes:
+    for shape_id, shape in enumerate(shapes):
         new_shape = reshape.Apply(shape)
+
+        for face in dupli_faces:
+            print('> Fixing bordering face:', face)
+            new_shape = fix_bordering_wires(new_shape, face)
         new_shapes.append(new_shape)
 
     return new_shapes, dupli_faces
