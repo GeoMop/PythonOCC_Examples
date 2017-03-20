@@ -34,6 +34,11 @@ from OCC.GeomAPI import GeomAPI_ProjectPointOnCurve
 from OCC.BRepTools import BRepTools_WireExplorer
 import argparse
 
+# Modules used for fixing order of edges in wire
+# from OCC.ShapeAnalysis import ShapeAnalysis_WireOrder
+# from OCC.Precision import Precision
+# import OCC.ShapeFix
+
 import brep_explorer
 import core_topology_traverse as traverse
 
@@ -238,30 +243,33 @@ def wires_of_face(face_shape):
     return tuple(face_traverse.wires_from_face(face_shape))
 
 
-def oriented_edges_o_wire(wire_shape, orientation):
-    """
-    This function returns tuple of oriented edges of wire
-    """
-    edges = []
-    wire_explorer = BRepTools_WireExplorer(wire_shape)
-    while wire_explorer.More():
-        edge = wire_explorer.Current()
-        edge_orientation = wire_explorer.Orientation()
-        if orientation is True:
-            edges.append((edge, edge_orientation))
-        else:
-            edges.append((edge, 1))
-        wire_explorer.Next()
-    return edges
+# def oriented_edges_o_wire(wire_shape, orientation):
+#     """
+#     This function returns tuple of oriented edges of wire
+#     """
+#     edges = []
+#     wire_explorer = BRepTools_WireExplorer(wire_shape)
+#     while wire_explorer.More():
+#         edge = wire_explorer.Current()
+#         edge_orientation = wire_explorer.Orientation()
+#         if orientation is True:
+#             edges.append((edge, edge_orientation))
+#         else:
+#             edges.append((edge, 1))
+#         wire_explorer.Next()
+#     return edges
 
 
-def edges_of_wire(wire_shape):
+def edges_of_wire(wire_shape, oriented=False):
     """
     Return tuple of wire edges
     """
-    # TODO: return edges with orientation stored in wire
     wire_traverse = traverse.Topo(wire_shape)
-    return tuple(wire_traverse.edges_from_wire(wire_shape))
+    if oriented is True:
+        # return tuple(wire_traverse.ordered_edges_from_wire(wire_shape))
+        return tuple(wire_traverse.edges_from_wire(wire_shape))
+    else:
+        return tuple(wire_traverse.edges_from_wire(wire_shape))
 
 
 def verts_of_edge(edge_shape):
@@ -291,10 +299,10 @@ def entities_of_wire(wire_shapes, orientation=False):
     verts = {}
     for wire_shape in wire_shapes:
         print('**** Wire shape:', wire_shape)
-        edge_shapes = oriented_edges_o_wire(wire_shape, orientation)
+        edge_shapes = edges_of_wire(wire_shape, orientation)
         print('**** Edge shapes of wire:', edge_shapes)
         edges_points = []
-        for edge_shape, edge_orientation in edge_shapes:
+        for edge_shape in edge_shapes:
             edge_verts = verts_of_edge(edge_shape)
             for vert in edge_verts:
                 vert_coords = coords_from_vert(vert)
@@ -302,11 +310,6 @@ def entities_of_wire(wire_shapes, orientation=False):
                     verts[vert_coords] = vert
             points = tuple(coords_from_vert(vert) for vert in edge_verts)
             edges[tuple(sorted(points))] = edge_shape
-            # When edge is flipped
-            if edge_orientation == 0:
-                print('!!!! fliping points:', points)
-                points = (points[1], points[0])
-                print('!!!! fliped points:', points)
             edges_points.append(points)
         wires[tuple(edges_points)] = wire_shape
     print(wires)
@@ -395,7 +398,7 @@ def fix_bordering_wires(shape, face_shape):
                         break
 
         all_edges = []
-        common_edges = []
+        common_edges = {}
         for old_wire_key, old_wire in old_wires.items():
             if old_wire_key not in wire_fixtures.keys():
                 print('!!!! No fixing of bordering/oposite wire:', old_wire)
@@ -404,20 +407,38 @@ def fix_bordering_wires(shape, face_shape):
                 if len(all_edges) > 0:
                     for edge in old_wire_key:
                         if edge in all_edges:
-                            common_edges.append(edge)
+                            common_edges[edge] = old_edges[tuple(sorted(edge))]
                 all_edges.extend(old_wire_key)
                 all_edges = list(set(all_edges))
 
         print('## Common edges:', common_edges)
 
-    reshape = BRepTools_ReShape()
-    for wire_key, fixed_wire in fixed_wires:
-        for old_wire_key, old_wire in old_wires.items():
-            if old_wire_key == wire_key:
-                print('### Replace!!!')
-                reshape.Replace(old_wire, fixed_wire)
-    new_shape = reshape.Apply(shape)
-    return new_shape
+    # reshape = BRepTools_ReShape()
+    # reshape.SetModeConsiderOrientation(True)
+    # print('## Reshaping mode:', reshape.GetModeConsiderOrientation())
+    test_edge = None
+    for edge_key, edge in common_edges.items():
+        # print('### Reversing edge:', edge)
+        edge.Reverse()
+
+        # reshape.Replace(edge, edge.Reversed(), False)
+        test_edge = edge
+    # new_shape = reshape.Apply(shape)
+    # print('#### Done:', reshape.Value(test_edge))
+
+    print(test_edge.Orientable(), test_edge.Orientation())
+    edge.Reverse()
+    print(test_edge.Orientable(), test_edge.Orientation())
+
+
+    # reshape = BRepTools_ReShape()
+    # for wire_key, fixed_wire in fixed_wires:
+    #     for old_wire_key, old_wire in old_wires.items():
+    #         if old_wire_key == wire_key:
+    #             print('### Replace!!!')
+    #             # reshape.Replace(old_wire, fixed_wire)
+    # new_shape = reshape.Apply(shape)
+    return shape
 
 
 def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
@@ -429,15 +450,15 @@ def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
 
     for new_vert_key, new_vert_shape in new_verts.items():
         old_vert_shape = old_verts[new_vert_key]
-        reshape.Replace(old_vert_shape, new_vert_shape)
+        reshape.Replace(old_vert_shape, new_vert_shape.Reversed())
 
     for new_edge_key, new_edge_shape in new_edges.items():
         old_edge_shape = old_edges[new_edge_key]
-        reshape.Replace(old_edge_shape, new_edge_shape)
+        reshape.Replace(old_edge_shape, new_edge_shape.Reversed())
 
-    # for new_wire_key, new_wire_shape in new_wires.items():
-    #     old_wire_shape = old_wires[new_wire_key]
-    #     reshape.Replace(old_wire_shape, new_wire_shape)
+    for new_wire_key, new_wire_shape in new_wires.items():
+        old_wire_shape = old_wires[new_wire_key]
+        reshape.Replace(old_wire_shape, new_wire_shape)
 
 
 def remove_duple_faces(reshape, faces, face_points, face_shape):
@@ -451,10 +472,10 @@ def remove_duple_faces(reshape, faces, face_points, face_shape):
 
             new_wires = wires_of_face(new_face_shape)
             old_wires = wires_of_face(face_shape)
-            remove_duple_wires_edges_verts(reshape, new_wires, old_wires)
 
             reshape.Replace(face_shape, new_face_shape.Reversed())
-
+            remove_duple_wires_edges_verts(reshape, new_wires, old_wires)
+ 
             return True
     return False
 
@@ -473,11 +494,13 @@ def points_of_face(face_shape):
     return tuple(sorted(points))
 
 
-def remove_duple_face_shapes(*shapes):
+def remove_duple_face_shapes(shape1, shape2):
     """
     Try to remove duplicated faces in two shapes
     """
-    primitives = brep_explorer.shapes_disassembly(shapes)
+    primitives1 = brep_explorer.shape_disassembly(shape1)
+    primitives2 = brep_explorer.shape_disassembly(shape2)
+
     # print(primitives)
     faces = {}
     dupli_faces = []
@@ -486,7 +509,17 @@ def remove_duple_face_shapes(*shapes):
     reshape = BRepTools_ReShape()
 
     # Faces
-    for face_shape in primitives[4].values():
+    for face_shape in primitives1[4].values():
+        # Debug print
+        print(face_shape)
+        points = points_of_face(face_shape)
+        if remove_duple_faces(reshape, faces, points, face_shape) is False:
+            faces[points] = face_shape
+        else:
+            dupli_faces.append(face_shape)
+
+    # Faces
+    for face_shape in primitives2[4].values():
         # Debug print
         print(face_shape)
         points = points_of_face(face_shape)
@@ -498,14 +531,13 @@ def remove_duple_face_shapes(*shapes):
     print("Dupli faces:", dupli_faces)
 
     # Reshaping all shapes
-    new_shapes = []
-    for shape_id, shape in enumerate(shapes):
-        new_shape = reshape.Apply(shape)
+    new_shapes = [shape1,]
+    new_shape = reshape.Apply(shape2)
 
-        for face in dupli_faces:
-            print('> Fixing bordering face:', face)
-            new_shape = fix_bordering_wires(new_shape, face)
-        new_shapes.append(new_shape)
+    for face in dupli_faces:
+        print('> Fixing bordering face:', face)
+        #new_shape = fix_bordering_wires(new_shape, face)
+    new_shapes.append(new_shape)
 
     return new_shapes, dupli_faces
 
@@ -581,7 +613,7 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
     primitives3 = brep_explorer.shapes_disassembly((volume1, volume2))
     brt = BRep_Tool()
     border_faces = []
-    for face_shape in primitives3[4].values():
+    for face_shape, base_shape in primitives3[4].values():
         face_traverse = traverse.Topo(face_shape)
         vertices = face_traverse.vertices_from_face(face_shape)
         face_coords = []
