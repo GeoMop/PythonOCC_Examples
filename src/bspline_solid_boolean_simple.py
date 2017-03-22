@@ -199,7 +199,7 @@ def solid_compound(filename=None):
     
     solids = make_two_boxes(builder, points_1, points_2, points_3)
 
-    solids, dup_faces = remove_duple_face_shapes(solids[0], solids[1])
+    solids, dup_faces = remove_duple_face_shapes(solids[0], (solids[1],))
 
     # make_compsolid = TopoDS_CompSolid()
     # print(dir(make_compsolid))
