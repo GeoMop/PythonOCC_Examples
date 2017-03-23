@@ -38,8 +38,6 @@ import argparse
 import brep_explorer
 import core_topology_traverse as traverse
 
-display, start_display, add_menu, add_function_to_menu = init_display()
-display.EraseAll()
 
 def create_bspline_surface(array):
     """
@@ -242,16 +240,12 @@ def wires_of_face(face_shape):
     return tuple(face_traverse.wires_from_face(face_shape))
 
 
-def edges_of_wire(wire_shape, oriented=False):
+def edges_of_wire(wire_shape):
     """
     Return tuple of wire edges
     """
     wire_traverse = traverse.Topo(wire_shape)
-    if oriented is True:
-        # return tuple(wire_traverse.ordered_edges_from_wire(wire_shape))
-        return tuple(wire_traverse.edges_from_wire(wire_shape))
-    else:
-        return tuple(wire_traverse.edges_from_wire(wire_shape))
+    return tuple(wire_traverse.edges_from_wire(wire_shape))
 
 
 def verts_of_edge(edge_shape):
@@ -271,7 +265,7 @@ def coords_from_vert(vert_shape):
     return (pnt.X(), pnt.Y(), pnt.Z())
 
 
-def entities_of_wires(wire_shapes, orientation=False):
+def entities_of_wires(wire_shapes):
     """
     Return two dictionaries of wires and edges, keys of these two dictionaries
     are coordinates of verticies
@@ -280,7 +274,7 @@ def entities_of_wires(wire_shapes, orientation=False):
     edges = {}
     verts = {}
     for wire_shape in wire_shapes:
-        edge_shapes = edges_of_wire(wire_shape, orientation)
+        edge_shapes = edges_of_wire(wire_shape)
         edges_points = []
         for edge_shape in edge_shapes:
             edge_verts = verts_of_edge(edge_shape)
@@ -296,6 +290,76 @@ def entities_of_wires(wire_shapes, orientation=False):
     return wires, edges, verts
 
 
+def bordering_wires_of_face(shape, face_shape):
+    """
+    Return dictionary of bordering wires with face shape. This function also
+    returns list of common edges of bordering wires. Definition of
+    bordering wire is following: such wire shares at least one edge
+    with face_shape, but it does not create face_shape.
+    """
+
+    primitives = brep_explorer.shape_disassembly(shape)
+
+    # Create list of wires "to be fixed" (potentially)
+    wire_shapes_tbf = []
+    for old_wire_shape in primitives[5].values():
+        wire_shapes_tbf.append(topods_Wire(old_wire_shape))
+    old_wires, old_edges, old_verts = entities_of_wires(wire_shapes_tbf)
+
+    # Get list of wires at border of shape
+    new_wire_shapes = wires_of_face(face_shape)
+    new_wires, new_edges, new_verts = entities_of_wires(new_wire_shapes)
+
+    # Dictionary of bordering wires
+    bordering_wires = {}
+
+    # Go through all wires of face_shape (usually only one wire)
+    for new_wire_key, new_wire_shape in new_wires.items():
+        print('>>>> Wire of face_shape:', new_wire_shape)
+        # Go through all edges of bordering wire
+        for edge_coords in new_wire_key:
+            new_edge_coords = tuple(sorted(edge_coords))
+            new_edge = new_edges[new_edge_coords]
+            print('@@@@ Bordering edge:', new_edge_coords, new_edge)
+            # Try to find this edge in other wires
+            for old_wire_key, old_wire in old_wires.items():
+                # Old wire can't be same as wire from bordering face
+                # This wire is all right and there is no need to fix it
+                if new_wire_key == old_wire_key:
+                    continue
+                # Try to find the edge in all edges of old wire
+                for old_edge_coord in old_wire_key:
+                    # Is it the edge with same verticies?
+                    if tuple(sorted(old_edge_coord)) == new_edge_coords:
+                        # Old wire containing edge from face_shape was found
+                        print('#### Old Wire to be fixed:', old_wire_key, old_wire)
+                        bordering_wires[old_wire_key] = old_wire
+                        break
+
+    print('<<<< Bordering wires:', bordering_wires)
+
+    # Try to get list of common edges of bordering wires
+    all_edges = []
+    common_edges = {}
+    for old_wire_key, old_wire in old_wires.items():
+        if old_wire_key in bordering_wires.keys():
+            print('^^^^ Edges of wrong wire:', old_wire_key)
+            if len(all_edges) > 0:
+                for edge in old_wire_key:
+                    if edge in all_edges:
+                        common_edges[edge] = old_edges[edge]
+            all_edges.extend(old_wire_key)
+            all_edges = list(set(all_edges))
+
+    print('<<<< Common edges:', common_edges)
+
+    return bordering_wires, common_edges
+
+
+# Note: it is magic that following function works. It probably can't be done
+# in one single replace, but you have to do several particular replaces. Big
+# disadvantage of reshape.Apply() is following: it returns new shape instead
+# of modification old shape.
 def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
     """
     Try to remove duple wires, edges and verticies
@@ -311,17 +375,25 @@ def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
             reshape.Replace(old_vert_shape, new_vert_shape.Reversed())
         else:
             reshape.Replace(old_vert_shape, new_vert_shape)
+        # FIXME: Note: previous code probably will not work in all cases. What
+        # you need to do is to go through all wires using this vertex and replace
+        # this vertex in all edges using this vertex. Replaced vertex has to
+        # have same orientation as old one.
 
     for new_edge_key, new_edge_shape in new_edges.items():
         old_edge_shape = old_edges[new_edge_key]
 
         # Always switch orientation of edge
         reshape.Replace(old_edge_shape, new_edge_shape.Reversed())
+        # FIXME: previous code probably will not work in all cases too. You will
+        # have to go through all wires using this edge and replace this edge
+        # with new one. Replaced edge has to have same orientation as old one too.
 
     for new_wire_key, new_wire_shape in new_wires.items():
         old_wire_shape = old_wires[new_wire_key]
 
-        # Never switch orientation of wire
+        # Never switch orientation of wire. It is right. There is probably
+        # no need to switch direction of new wire.
         reshape.Replace(old_wire_shape, old_wire_shape)
 
 
@@ -364,7 +436,6 @@ def remove_duple_face_shapes(base_shape, shapes):
     Try to remove duplicated faces in two shapes
     """
     base_primitives = brep_explorer.shape_disassembly(base_shape)
-    primitives = brep_explorer.shapes_disassembly(shapes)
 
     faces = {}
     dupli_faces = []
@@ -381,13 +452,16 @@ def remove_duple_face_shapes(base_shape, shapes):
         else:
             dupli_faces.append(face_shape)
 
-    # This for loop remove duplicities in remaining shapes
-    for face_shape in primitives[4].values():
-        points = points_of_face(face_shape)
-        if remove_duple_faces(reshape, faces, points, face_shape) is False:
-            faces[points] = face_shape
-        else:
-            dupli_faces.append(face_shape)
+    for shape in shapes:
+        primitives = brep_explorer.shape_disassembly(shape)
+        # This for loop remove duplicities in remaining shapes
+        for face_shape in primitives[4].values():
+            points = points_of_face(face_shape)
+            if remove_duple_faces(reshape, faces, points, face_shape) is False:
+                faces[points] = face_shape
+            else:
+                bordering_wires_of_face(shape, face_shape)
+                dupli_faces.append(face_shape)
 
     # Reshaping all shapes
     new_shapes = [base_shape,]
@@ -542,6 +616,9 @@ def solid_compound(filename=None):
 
     # Remove duplicities in faces
     __new_molds, dup_faces = remove_duple_face_shapes(new_molds[0], _new_molds)
+
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
 
     colors = ['red', 'green', 'blue', 'yellow', 'orange']
 

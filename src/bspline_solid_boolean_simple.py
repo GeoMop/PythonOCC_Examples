@@ -1,6 +1,7 @@
 """
-This module is able to create simple solid object (cube). Each side of
-cube is bspline surface. This solid object can be exported to BREP file.
+This module is able to create simple solid object (cube) created from two glued solids.
+These two solids are created with two boolean operations between basic cube and some other cube.
+Final solid object can be exported to BREP file.
 """
 
 from OCC.gp import *
@@ -15,25 +16,17 @@ from OCC.BRepPrimAPI import *
 from OCC.BRepAlgoAPI import *
 from OCC.TopoDS import *
 from OCC.STEPControl import *
-from OCC.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.BRepTools import breptools_Write
 from OCC.BRepTools import BRepTools_ReShape
 from OCC.Display.SimpleGui import init_display
-from OCC.TopExp import TopExp_Explorer
-from OCC.TopAbs import TopAbs_SHELL
-from OCC.TopAbs import TopAbs_VERTEX
-from OCC.TopAbs import TopAbs_EDGE
-from OCC.TopAbs import TopAbs_WIRE
-from OCC.ShapeFix import ShapeFix_Shell
-from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 from OCC.BRepBuilderAPI import BRepBuilderAPI_Sewing
+
 import argparse
 
-import bspline_solid_boolean
+# Modules from same directory
 from bspline_solid_boolean import remove_duple_face_shapes
-
 import brep_explorer
-import core_topology_traverse as traverse
+
 
 def create_bspline_surface(array):
     """
@@ -56,7 +49,7 @@ def create_bspline_surface(array):
     return bspline_surface
 
 
-def make_box(builder, points):
+def make_solid_box(builder, points):
     """
     Make box from 8 points
     """
@@ -138,21 +131,21 @@ def make_box(builder, points):
 
 
 
-def make_two_boxes(builder, points_1, points_2, points_3):
+def make_two_boxes(builder, points_1, points_2):
     """
     """
-    solid_box1 = make_box(builder, points_1)
-    solid_box2 = make_box(builder, points_2)
-    solid_box3 = make_box(builder, points_3)
+    solid_box1 = make_solid_box(builder, points_1)
+    solid_box2 = make_solid_box(builder, points_2)
 
     mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
-    mold2 = BRepAlgoAPI_Cut(solid_box1, solid_box3)
+    mold2 = BRepAlgoAPI_Common(solid_box1, solid_box2)
 
     return mold1.Shape(), mold2.Shape()
 
+
 def solid_compound(filename=None):
     """
-    Generate and display solid object created from bspline surface.
+    Generate and display solid object created from b-spline surface.
     """
 
     # Create Builder first
@@ -170,7 +163,7 @@ def solid_compound(filename=None):
         gp_Pnt(0.0, 1.0, 1.0)
     ]
 
-    # Definition of boxes usd for spliting base box
+    # Definition of boxes used for splitting base box
     dx = 0.5
     dy = 0.01
     dz = 0.01
@@ -185,43 +178,29 @@ def solid_compound(filename=None):
         gp_Pnt(0.0+dx, 1.0+dy, 1.0+dz)
     ]
     
-    dx = 1 - dx
-    points_3 = [
-        gp_Pnt(0.0-dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0-dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0-dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0-dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0-dx, 1.0+dy, 1.0+dz),
-        gp_Pnt(0.0-dx, 1.0+dy, 1.0+dz)
-    ]
-    
-    solids = make_two_boxes(builder, points_1, points_2, points_3)
+    solids = make_two_boxes(builder, points_1, points_2)
 
     solids, dup_faces = remove_duple_face_shapes(solids[0], (solids[1],))
 
-    # make_compsolid = TopoDS_CompSolid()
-    # print(dir(make_compsolid))
-    # make_compsolid.Add(solids[0])
-    # make_compsolid.Add(solids[1])
-    # comp_solid = make_compsolid.CompSolid()
-    # builder.MakeCompSolid(comp_solid)
-
+    # It would be logical to create "compsolid". Composition of solids sharing
+    # one common face, but I did find any Python nor C++ example creating such
+    # object.
+    #
+    # Following code does not work, because builder.Add(compsolid, solids[0])
+    # raises error:
+    # RuntimeError: TopoDS_UnCompatibleShapes
+    # ... it also does not accept shells. OCC is simply horrible library!
+    #
     # compsolid = TopoDS_CompSolid()
-    # print(dir(compsolid))
     # builder.MakeCompSolid(compsolid)
+    # builder.Add(compsolid, solids[0])
+    # builder.Add(compsolid, solids[1])
 
-    # shells = bspline_solid_boolean.shells_of_solid(solids[0])
-    # for shell in shells:
-    #     builder.Add(compsolid, shell)
-    
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
+    # builder.Add(compound, compsolid)
     builder.Add(compound, solids[0])
     builder.Add(compound, solids[1])
-
-    # builder.Add(compound, comp_solid)
 
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
@@ -244,5 +223,5 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--filename", type=str,
         help="Write Solid created form B-Spline surfaces to BREP file format", default=None)
     args = parser.parse_args()
-    # Display and optionaly output surface to file (IGES file format)
+    # Display and optionally output surface to file (BREP file format)
     solid_compound(args.filename)
