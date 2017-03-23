@@ -1,7 +1,8 @@
 """
 This module is able to create complicated compound object (cube) created from
-several solid objects. Each side of solid is bspline surface. Final compound
-object can be exported to BREP file.
+several solid objects. Each side of solid is b-spline surface. Final compound
+object can be exported to BREP file. Purpose of this module is to create
+object that can be meshed in GMSH/Netgen and create compatible mesh network.
 """
 
 from __future__ import print_function
@@ -159,7 +160,7 @@ def create_test_boxes(builder):
     ]
     solid_box1 = make_box(builder, points_1)
 
-    # Definition of boxes used for spliting base box
+    # Definition of box used for splitting base box
     dx = 0.4
     dy = 0.01
     dz = 0.01
@@ -175,24 +176,11 @@ def create_test_boxes(builder):
     ]
     solid_box2 = make_box(builder, points_2)
 
-    dx = 1 - 0.4
-    points_3 = [
-        gp_Pnt(0.0-dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0-dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0-dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0-dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0-dx, 1.0+dy, 1.0+dz),
-        gp_Pnt(0.0-dx, 1.0+dy, 1.0+dz)
-    ]
-    solid_box3 = make_box(builder, points_3)
-
-    # Definition of boxes used for spliting one part of slitted box
+    # Definition of box used for splitting one part of slitted box
     dx = 0.01
     dy = 0.7
     dz = 0.01
-    points_4 = [
+    points_3 = [
         gp_Pnt(0.0-dx, 0.0+dy, 0.0-dz),
         gp_Pnt(1.0+dx, 0.0+dy, 0.0-dz),
         gp_Pnt(1.0+dx, 1.0+dy, 0.0-dz),
@@ -202,22 +190,9 @@ def create_test_boxes(builder):
         gp_Pnt(1.0+dx, 1.0+dy, 1.0+dz),
         gp_Pnt(0.0-dx, 1.0+dy, 1.0+dz)
     ]
-    solid_box4 = make_box(builder, points_4)
+    solid_box3 = make_box(builder, points_3)
 
-    dy = 1.0 - dy
-    points_5 = [
-        gp_Pnt(0.0-dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0+dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0+dx, 1.0-dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 1.0-dy, 0.0-dz),
-        gp_Pnt(0.0-dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0+dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0+dx, 1.0-dy, 1.0+dz),
-        gp_Pnt(0.0-dx, 1.0-dy, 1.0+dz)
-    ]
-    solid_box5 = make_box(builder, points_5)
-
-    return solid_box1, solid_box2, solid_box3, solid_box4, solid_box5
+    return solid_box1, solid_box2, solid_box3
 
 
 def compare_faces(face1, face2):
@@ -450,6 +425,8 @@ def remove_duple_face_shapes(base_shape, shapes):
         if remove_duple_faces(reshape, faces, points, face_shape) is False:
             faces[points] = face_shape
         else:
+            # This line of code should not be never called for properly
+            # created shapes.
             dupli_faces.append(face_shape)
 
     for shape in shapes:
@@ -460,7 +437,9 @@ def remove_duple_face_shapes(base_shape, shapes):
             if remove_duple_faces(reshape, faces, points, face_shape) is False:
                 faces[points] = face_shape
             else:
-                bordering_wires_of_face(shape, face_shape)
+                # Debug code ... it can help you to implement glue two solids
+                # together in right way.
+                # bordering_wires_of_face(shape, face_shape)
                 dupli_faces.append(face_shape)
 
     # Reshaping all shapes
@@ -587,22 +566,22 @@ def replace_face_with_splitted_faces(builder, shape, face, splitted_faces):
 
 def solid_compound(filename=None):
     """
-    Generate and display solid object created from bspline surface.
+    Generate and display solid object created from b-spline surface.
     """
 
     # Create Builder first
     builder = BRep_Builder()
 
-    solid_box1, solid_box2, solid_box3, solid_box4, solid_box5 = create_test_boxes(builder)
+    solid_box1, solid_box2, solid_box3 = create_test_boxes(builder)
 
     mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
-    mold2 = BRepAlgoAPI_Cut(solid_box1, solid_box3)
+    mold2 = BRepAlgoAPI_Common(solid_box1, solid_box2)
 
     new_molds, dup_faces = remove_duple_face_shapes(mold1.Shape(), (mold2.Shape(),))
     dup_face1 = dup_faces[0]
 
-    mold3 = BRepAlgoAPI_Cut(new_molds[1], solid_box4)
-    mold4 = BRepAlgoAPI_Cut(new_molds[1], solid_box5)
+    mold3 = BRepAlgoAPI_Cut(new_molds[1], solid_box3)
+    mold4 = BRepAlgoAPI_Common(new_molds[1], solid_box3)
 
     _new_molds, _dup_faces = remove_duple_face_shapes(mold3.Shape(), (mold4.Shape(),))
     dup_face2 = _dup_faces[0]
