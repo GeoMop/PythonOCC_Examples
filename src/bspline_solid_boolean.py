@@ -165,14 +165,14 @@ def create_test_boxes(builder):
     dy = 0.01
     dz = 0.01
     points_2 = [
-        gp_Pnt(0.0+dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0+dx, 0.0-dy, 0.0-dz),
-        gp_Pnt(1.0+dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0+dx, 1.0+dy, 0.0-dz),
-        gp_Pnt(0.0+dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0+dx, 0.0-dy, 1.0+dz),
-        gp_Pnt(1.0+dx, 1.0+dy, 1.0+dz),
-        gp_Pnt(0.0+dx, 1.0+dy, 1.0+dz)
+        gp_Pnt(0.0+dx, 0.5-dy, 0.5-dz),
+        gp_Pnt(1.0+dx, 0.5-dy, 0.5-dz),
+        gp_Pnt(1.0+dx, 1.5+dy, 0.5-dz),
+        gp_Pnt(0.0+dx, 1.5+dy, 0.5-dz),
+        gp_Pnt(0.0+dx, 0.5-dy, 1.5+dz),
+        gp_Pnt(1.0+dx, 0.5-dy, 1.5+dz),
+        gp_Pnt(1.0+dx, 1.5+dy, 1.5+dz),
+        gp_Pnt(0.0+dx, 1.5+dy, 1.5+dz)
     ]
     solid_box2 = make_box(builder, points_2)
 
@@ -529,95 +529,168 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
     return border_faces
 
 
-def replace_face_with_splitted_faces(builder, shape, face, splitted_faces):
+def display_points(display, points_coords):
     """
-    Try to create new shape that does not include face, but it
+    Display points as yellow crosses
+    """
+    presentation = OCC.Prs3d.Prs3d_Presentation(display._struc_mgr)
+    group = OCC.Prs3d.Prs3d_Root_CurrentGroup(presentation.GetHandle()).GetObject()
+    black = OCC.Quantity.Quantity_Color(OCC.Quantity.Quantity_NOC_BLACK)
+    asp = OCC.Graphic3d.Graphic3d_AspectLine3d(black, OCC.Aspect.Aspect_TOL_SOLID, 1)
+    pnt_array = OCC.Graphic3d.Graphic3d_ArrayOfPoints(len(points_coords),
+                                                      False,  # hasVColors
+                                                      )
+    for point in points_coords:
+        pnt = OCC.gp.gp_Pnt(point[0], point[1], point[2])
+        pnt_array.AddVertex(pnt)
+    group.SetPrimitivesAspect(asp.GetHandle())
+    group.AddPrimitiveArray(pnt_array.GetHandle())
+    presentation.Display()
+
+
+def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
+    """
+    Try to create new shape that does not include old_face, but it
     includes instead splitted_faces
     """
-    points = points_of_face(face)
+    old_points = points_of_face(old_face)
 
     sewing = BRepBuilderAPI_Sewing(0.01, True, True, True, False)
     sewing.SetFloatingEdgesMode(True)
+
     # Get list of all faces in shape
     primitives = brep_explorer.shape_disassembly(shape)    
+
     brt = BRep_Tool()
     border_faces = []
-    for face_shape in primitives[4].values():
-        if points_of_face(face_shape) != points:
-            face = topods_Face(face_shape)
-            sewing.Add(face)
-    for face_shape in splitted_faces:
-        face = topods_Face(face_shape)
-        sewing.Add(face)
 
+    # This loop tries to add original not-splitted faces to sewing
+    for face_shape in primitives[4].values():
+        new_points = points_of_face(face_shape)
+        # Quick Python trick using sets: all points in new_points
+        # has to be included in old_points.
+        # Note: may be, it is not 100% reliable, but for all uses cases it just works.
+        old_set = set(old_points)
+        new_set = set(new_points)
+        if not old_set <= new_set:
+            old_face = topods_Face(face_shape)
+            sewing.Add(old_face)
+    # This loop adds splitted faces to sewing
+    for face_shape in splitted_faces:
+        old_face = topods_Face(face_shape)
+        sewing.Add(old_face)
+
+    # Sew all faces together
     sewing.Perform()
     sewing_shape = sewing.SewedShape()
+
+    # When there is no hole in sewing, then following function call will not call
+    # Do not use try-except to solve problems here!
     shell = topods_Shell(sewing_shape)
+
+    # Make solid from shell and return result
     make_solid = BRepBuilderAPI_MakeSolid()
     make_solid.Add(shell)
-
     solid = make_solid.Solid()
-
     builder.MakeSolid(solid)
     builder.Add(solid, shell)
-
     return solid
+
+
+def create_replace_dictionary(old_dup_faces, old_shapes, new_shapes, new_hint_faces):
+    """
+    This function tries to create dictionary of face replacements.
+    """
+    replacements = {}
+    for old_dup_face in old_dup_faces:
+        border_faces = []
+        for new_hint_face in new_hint_faces:
+            # Try to find bordering faces
+            tmp_faces = find_intersected_bordering_faces(old_dup_face, old_shapes, new_shapes, new_hint_face)
+            # When some faces were found, then add them to list.
+            # Note: this is usually happened only once in this loop, but this tries to be robust
+            if len(tmp_faces) > 0:
+                border_faces.extend(tmp_faces)
+        # This should not happen
+        if len(border_faces) == 1:
+            raise ValueError('When some intersections are found, then at least two have to be found. Not only one!')
+        # When at least two border faces were found, then add them to the dictionary
+        elif len(border_faces) >= 2:
+            replacements[old_dup_face] = border_faces
+    return replacements
 
 
 def solid_compound(filename=None):
     """
-    Generate and display solid object created from b-spline surface.
+    Generate and display several solid object created from b-spline surface and
+    sharing some b-spline surfaces.
     """
+
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
 
     # Create Builder first
     builder = BRep_Builder()
 
     solid_box1, solid_box2, solid_box3 = create_test_boxes(builder)
 
+    # Split solid_box into two molds
     mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
     mold2 = BRepAlgoAPI_Common(solid_box1, solid_box2)
 
+    # Try to remove face from second mold and share common one face.
+    # It is like glue two shapes together
     new_molds, dup_faces = remove_duple_face_shapes(mold1.Shape(), (mold2.Shape(),))
     dup_face1 = dup_faces[0]
 
+    # Split second mold into yet other two molds
     mold3 = BRepAlgoAPI_Cut(new_molds[1], solid_box3)
     mold4 = BRepAlgoAPI_Common(new_molds[1], solid_box3)
 
+    # Again remove common face
     _new_molds, _dup_faces = remove_duple_face_shapes(mold3.Shape(), (mold4.Shape(),))
     dup_face2 = _dup_faces[0]
 
-    # Try to find two intersection points
-    inter_faces = find_intersected_bordering_faces(dup_face1, _new_molds[0], _new_molds[1], dup_face2)
+    # Create dictionary with replacements. Keys are original faces and corresponding values are
+    # splitted faces ... it is used in next step
+    replacements = create_replace_dictionary(dup_faces, _new_molds[0], _new_molds[1], _dup_faces)
 
-    new_mold = replace_face_with_splitted_faces(builder, new_molds[0], dup_face1, inter_faces)
-
-    new_molds[0] = new_mold
+    # Apply replacement for all item of dictionary
+    for dup_face, inter_faces in replacements.items():
+        # Replace original face with bordering faces
+        new_mold = replace_face_with_splitted_faces(builder, new_molds[0], dup_face, inter_faces)
+        new_molds[0] = new_mold
 
     # Remove duplicities in faces
     __new_molds, dup_faces = remove_duple_face_shapes(new_molds[0], _new_molds)
 
-    display, start_display, add_menu, add_function_to_menu = init_display()
-    display.EraseAll()
-
     colors = ['red', 'green', 'blue', 'yellow', 'orange']
 
+    # Create final compound
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
+    for color_id, mold in enumerate(__new_molds):
+        builder.Add(compound, mold)
+
+        
+    # Print statistics about final compound
+    print('Final compound')
+    stat = brep_explorer.create_shape_stat(compound)
+    brep_explorer.print_stat(stat)
+
+    # Write compound to the BREP file
+    if filename is not None:
+         breptools_Write(compound, filename)
+
+    # Display results
     col_len = len(colors)
     for color_id, mold in enumerate(__new_molds):
         builder.Add(compound, mold)
         _color_id = color_id % col_len
         ais_shell = display.DisplayShape(mold, color=colors[_color_id], update=True)
         # display.Context.SetTransparency(ais_shell, 0.7)
-
-    print('Final compound')
-    stat = brep_explorer.create_shape_stat(compound)
-    brep_explorer.print_stat(stat)
-
-    if filename is not None:
-         breptools_Write(compound, filename)
-
     start_display()
+
 
 if __name__ == '__main__':
     # Parse argument
