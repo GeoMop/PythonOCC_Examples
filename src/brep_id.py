@@ -44,22 +44,6 @@ CompSolid = class_factory('CompSolid', (Solid,))
 Compound = class_factory('Compound', (CompSolid, Solid, Shell, Face, Wire, Edge, Vertex))
 
 
-def check_validy_of_underling_items(shapes, shape):
-    """
-    This function checks validity of underling items, when some id
-    is not valid, then replace it with None value
-    """
-    
-    for idx,item_no in enumerate(shape.items):
-        item_found = False
-        for underling in shape.underlings:
-            if abs(item_no) in shapes[underling]:
-                item_found = True
-                break
-        if item_found is not True:
-            shape.items[idx] = None
-
-
 def main(filename):
     """
     Main function for processing brep file
@@ -88,8 +72,7 @@ def main(filename):
     }
 
     num_of_items = None
-    prev_shape = None
-    prev_items = None
+    shape = None
 
     with open(filename, "r") as brep_file:
         for line in brep_file:
@@ -99,28 +82,17 @@ def main(filename):
                 if items[0] == 'TShapes':
                     shape_id = num_of_items = int(items[1])
                     print('Number of TShapes:', num_of_items)
+                elif items[-1] == '*' and shape is not None:
+                    shape.items = [int(item) for idx,item in enumerate(items) if idx % 2 == 0 and item != '*']
+                    # Debug print
+                    print(shape)
                 elif num_of_items is not None and items[0] in item_disp:
                     # Create new shape object
                     shape = item_disp[items[0]](shape_id)
                     # Add shape object to dictionary of shapes
                     shapes[type(shape)][shape_id] = shape
-                    
-                    if prev_shape is not None:
-                        # Fill items of previous shape
-                        prev_shape.items = [int(item) for idx,item in enumerate(prev_items) if idx % 2 == 0 and item != '*']
-                        # Check validy of underling items
-                        check_validy_of_underling_items(shapes, prev_shape)
-                        # Debug print
-                        print(prev_shape)
-                    prev_shape = shape
                     shape_id -= 1
-            prev_items = items
             # print(line.rstrip())
-
-        # And last one
-        shape.items = [abs(int(item)) for idx,item in enumerate(prev_items) if idx % 2 == 0 and item != '*']
-        # Debug print
-        print(shape)
 
     # Print shapes statistics
     print('\nStatistics:')
