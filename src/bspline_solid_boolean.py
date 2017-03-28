@@ -15,14 +15,8 @@ from OCC.GeomConvert import GeomConvert_CompBezierSurfacesToBSplineSurface
 from OCC.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing
 from OCC.BRep import BRep_Builder, BRep_Tool
 from OCC.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Common
-from OCC.BRepTools import breptools_Write, BRepTools_WireExplorer, BRepTools_ReShape
+from OCC.BRepTools import breptools_Write, BRepTools_ReShape
 from OCC.Display.SimpleGui import init_display
-from OCC.TopExp import TopExp_Explorer
-from OCC.TopAbs import TopAbs_SHELL
-from OCC.TopAbs import TopAbs_VERTEX
-from OCC.TopAbs import TopAbs_EDGE
-from OCC.TopAbs import TopAbs_WIRE
-from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
 from OCC.TopoDS import TopoDS_Compound, topods_Shell, topods_Wire, topods_Face, topods_Edge, topods_Vertex
 from OCC.GeomAPI import GeomAPI_ProjectPointOnCurve
 import argparse
@@ -48,7 +42,7 @@ def create_bspline_surface(array):
         vmult = temp.VMultiplicities().GetObject().Array1()
         udeg = temp.UDegree()
         vdeg = temp.VDegree()
-        bspline_surface = Geom_BSplineSurface( poles, uknots, vknots, umult, vmult, udeg, vdeg, False, False )
+        bspline_surface = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, False, False)
     return bspline_surface
 
 
@@ -377,7 +371,7 @@ def remove_duple_wires_edges_verts(reshape, new_wire_shapes, old_wire_shapes):
 
         # Never switch orientation of wire. It is right. There is probably
         # no need to switch direction of new wire.
-        reshape.Replace(old_wire_shape, old_wire_shape)
+        reshape.Replace(old_wire_shape, new_wire_shape)
 
 
 def remove_duple_faces(reshape, faces, face_points, old_face_shape):
@@ -458,7 +452,7 @@ def remove_duple_face_shapes(base_shape, shapes):
     return new_shapes, dupli_faces
 
 
-def find_intersected_bordering_faces(face, volume1, volume2, hint_face, tolerance=0.00001):
+def find_intersected_faces(face, volume1, volume2, hint_face, tolerance=0.00001):
     """
     Try to find bordering faces
     """
@@ -529,7 +523,7 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
         face_traverse = traverse.Topo(face_shape)
         vertices = face_traverse.vertices_from_face(face_shape)
         face_coords = []
-        for idx,vert in enumerate(vertices):
+        for vert in vertices:
             pnt = brt.Pnt(topods_Vertex(vert))
             face_coords.append((pnt.X(), pnt.Y(), pnt.Z()))
         
@@ -544,29 +538,27 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
     return border_faces
 
 
-def display_points(display, points_coords):
-    """
-    Debug function that can be used for displaying of points as yellow crosses.
+# def display_points(display, points_coords):
+#     """
+#     Debug function that can be used for displaying of points as yellow crosses.
 
-    :param points_coords: iterable of tuple/list of coordinates
-    """
+#     :param points_coords: iterable of tuple/list of coordinates
+#     """
 
-    presentation = OCC.Prs3d.Prs3d_Presentation(display._struc_mgr)
-    group = OCC.Prs3d.Prs3d_Root_CurrentGroup(presentation.GetHandle()).GetObject()
-    black = OCC.Quantity.Quantity_Color(OCC.Quantity.Quantity_NOC_BLACK)
-    asp = OCC.Graphic3d.Graphic3d_AspectLine3d(black, OCC.Aspect.Aspect_TOL_SOLID, 1)
-    pnt_array = OCC.Graphic3d.Graphic3d_ArrayOfPoints(len(points_coords),
-                                                      False,  # hasVColors
-                                                      )
-    for point in points_coords:
-        pnt = OCC.gp.gp_Pnt(point[0], point[1], point[2])
-        pnt_array.AddVertex(pnt)
-    group.SetPrimitivesAspect(asp.GetHandle())
-    group.AddPrimitiveArray(pnt_array.GetHandle())
-    presentation.Display()
+#     presentation = OCC.Prs3d.Prs3d_Presentation(display._struc_mgr)
+#     group = OCC.Prs3d.Prs3d_Root_CurrentGroup(presentation.GetHandle()).GetObject()
+#     black = OCC.Quantity.Quantity_Color(OCC.Quantity.Quantity_NOC_BLACK)
+#     asp = OCC.Graphic3d.Graphic3d_AspectLine3d(black, OCC.Aspect.Aspect_TOL_SOLID, 1)
+#     pnt_array = OCC.Graphic3d.Graphic3d_ArrayOfPoints(len(points_coords), False)
+#     for point in points_coords:
+#         pnt = OCC.gp.gp_Pnt(point[0], point[1], point[2])
+#         pnt_array.AddVertex(pnt)
+#     group.SetPrimitivesAspect(asp.GetHandle())
+#     group.AddPrimitiveArray(pnt_array.GetHandle())
+#     presentation.Display()
 
 
-def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
+def replace_splitted_faces(builder, shape, old_face, splitted_faces):
     """
     Try to create new shape that does not include old_face, but it
     includes instead splitted_faces
@@ -579,9 +571,6 @@ def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
 
     # Get list of all faces in shape
     primitives = brep_explorer.shape_disassembly(shape)    
-
-    brt = BRep_Tool()
-    border_faces = []
 
     obsolete_face_found = False
 
@@ -637,7 +626,7 @@ def create_replace_dictionary(old_dup_faces, old_shapes, new_shapes, new_hint_fa
         # Use all hint faces to try to find corresponding splitted faces
         for new_hint_face in new_hint_faces:
             # Try to find bordering faces
-            tmp_faces = find_intersected_bordering_faces(old_dup_face, old_shapes, new_shapes, new_hint_face)
+            tmp_faces = find_intersected_faces(old_dup_face, old_shapes, new_shapes, new_hint_face)
             # When some faces were found, then add them to list.
             # Note: this is usually happened only once in this loop, but this tries to be robust
             if len(tmp_faces) > 0:
@@ -655,7 +644,7 @@ def glue_solids(builder, mold1, mold2, other_molds=None, dup_faces=None, indexes
     """
     Try to glue two solid shapes together and glue it with remaining
     objects in other_molds.
-    
+
     :param builder: OCC builder object used for adding shapes
     :param mold1: First shape that will be glued together with second mold and other_molds
     :param mold2: Second shape that will be glued together wish first mold and other_molds
@@ -681,7 +670,7 @@ def glue_solids(builder, mold1, mold2, other_molds=None, dup_faces=None, indexes
         # Apply replacement for all item of dictionary
         for dup_face, inter_faces in replacements.items():
             # Replace original face with bordering faces
-            new_mold = replace_face_with_splitted_faces(builder, other_molds[mold_idx], dup_face, inter_faces)
+            new_mold = replace_splitted_faces(builder, other_molds[mold_idx], dup_face, inter_faces)
             other_molds[mold_idx] = new_mold
 
     # Remove duplicities in faces
@@ -692,6 +681,41 @@ def glue_solids(builder, mold1, mold2, other_molds=None, dup_faces=None, indexes
         __dup_faces.extend(__tmp_dup_faces)
 
     return __new_molds, __dup_faces
+
+
+def write_result(compound, filename):
+    """
+    Write result compound to BREP file
+    """
+    if filename is not None:
+        print('Writing compound to file:', filename)
+        breptools_Write(compound, filename)
+
+
+def display_result(shapes):
+    """
+    Display results
+    """
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
+
+    # Display results
+    colors = ['red', 'green', 'blue', 'yellow', 'orange']
+    col_len = len(colors)
+    for color_id, shape in enumerate(shapes):
+        _color_id = color_id % col_len
+        ais_shell = display.DisplayShape(shape, color=colors[_color_id], update=True)
+        # display.Context.SetTransparency(ais_shell, 0.7)
+    start_display()
+
+
+def print_statistics(name, shape):
+    """
+    Print statistics about shape
+    """
+    print(name)
+    stat = brep_explorer.create_shape_stat(shape)
+    brep_explorer.print_stat(stat)
 
 
 def solid_compound(filename=None):
@@ -736,32 +760,18 @@ def solid_compound(filename=None):
     print('Done')
       
     # Print statistics about final compound
-    print('Final compound')
-    stat = brep_explorer.create_shape_stat(compound)
-    brep_explorer.print_stat(stat)
+    print_statistics('Final compound', compound)
 
     # Write compound to the BREP file
-    if filename is not None:
-        print('Writing compound to file:', filename)
-        breptools_Write(compound, filename)
-
-    display, start_display, add_menu, add_function_to_menu = init_display()
-    display.EraseAll()
-
-    # Display results
-    colors = ['red', 'green', 'blue', 'yellow', 'orange']
-    col_len = len(colors)
-    for color_id, mold in enumerate(__new_molds):
-        _color_id = color_id % col_len
-        ais_shell = display.DisplayShape(mold, color=colors[_color_id], update=True)
-        # display.Context.SetTransparency(ais_shell, 0.7)
-    start_display()
+    write_result(compound, filename)
+    
+    display_result(__new_molds)
 
 
 if __name__ == '__main__':
     # Parse argument
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--filename", type=str,
-        help="Write final compound to BREP file format", default=None)
+                        help="Write final compound to BREP file format", default=None)
     args = parser.parse_args()
     solid_compound(args.filename)
