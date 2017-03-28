@@ -7,33 +7,24 @@ object that can be meshed in GMSH/Netgen and create compatible mesh network.
 
 from __future__ import print_function
 
-from OCC.gp import *
-from OCC.Geom import *
-from OCC.TColGeom import *
-from OCC.TColgp import * 
-from OCC.GeomConvert import *
-from OCC.BRepBuilderAPI import *
-from OCC.BRepFill import *
-from OCC.BRep import *
-from OCC.BRepPrimAPI import *
-from OCC.BRepAlgoAPI import *
-from OCC.TopoDS import *
-from OCC.STEPControl import *
-from OCC.BRepAlgoAPI import BRepAlgoAPI_Fuse
-from OCC.BRepTools import breptools_Write
-from OCC.BRepTools import BRepTools_ReShape
+from OCC.gp import gp_Pnt
+from OCC.Geom import Geom_BezierSurface, Geom_BSplineSurface
+from OCC.TColGeom import TColGeom_Array2OfBezierSurface
+from OCC.TColgp import TColgp_Array2OfPnt
+from OCC.GeomConvert import GeomConvert_CompBezierSurfacesToBSplineSurface
+from OCC.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing
+from OCC.BRep import BRep_Builder, BRep_Tool
+from OCC.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Common
+from OCC.BRepTools import breptools_Write, BRepTools_WireExplorer, BRepTools_ReShape
 from OCC.Display.SimpleGui import init_display
 from OCC.TopExp import TopExp_Explorer
 from OCC.TopAbs import TopAbs_SHELL
 from OCC.TopAbs import TopAbs_VERTEX
 from OCC.TopAbs import TopAbs_EDGE
 from OCC.TopAbs import TopAbs_WIRE
-from OCC.ShapeFix import ShapeFix_Shell
 from OCC.TopOpeBRepTool import TopOpeBRepTool_FuseEdges
-from OCC.BRepBuilderAPI import BRepBuilderAPI_Sewing
-from OCC.TopoDS import topods_Wire, topods_Edge, topods_Vertex
+from OCC.TopoDS import TopoDS_Compound, topods_Shell, topods_Wire, topods_Face, topods_Edge, topods_Vertex
 from OCC.GeomAPI import GeomAPI_ProjectPointOnCurve
-from OCC.BRepTools import BRepTools_WireExplorer
 import argparse
 
 import brep_explorer
@@ -162,17 +153,17 @@ def create_test_boxes(builder):
 
     # Definition of box used for splitting base box
     dx = 0.4
-    dy = 0.01
-    dz = 0.01
+    dy = 0.5
+    dz = 0.5
     points_2 = [
-        gp_Pnt(0.0+dx, 0.5-dy, 0.5-dz),
-        gp_Pnt(1.0+dx, 0.5-dy, 0.5-dz),
-        gp_Pnt(1.0+dx, 1.5+dy, 0.5-dz),
-        gp_Pnt(0.0+dx, 1.5+dy, 0.5-dz),
-        gp_Pnt(0.0+dx, 0.5-dy, 1.5+dz),
-        gp_Pnt(1.0+dx, 0.5-dy, 1.5+dz),
-        gp_Pnt(1.0+dx, 1.5+dy, 1.5+dz),
-        gp_Pnt(0.0+dx, 1.5+dy, 1.5+dz)
+        gp_Pnt(0.0+dx, 0.0+dy, 0.0+dz),
+        gp_Pnt(1.0+dx, 0.0+dy, 0.0+dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 0.0+dz),
+        gp_Pnt(0.0+dx, 1.0+dy, 0.0+dz),
+        gp_Pnt(0.0+dx, 0.0+dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 0.0+dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 1.0+dz),
+        gp_Pnt(0.0+dx, 1.0+dy, 1.0+dz)
     ]
     solid_box2 = make_box(builder, points_2)
 
@@ -192,7 +183,23 @@ def create_test_boxes(builder):
     ]
     solid_box3 = make_box(builder, points_3)
 
-    return solid_box1, solid_box2, solid_box3
+    # Definition of box used for splitting one part of slitted box
+    dx = 0.6
+    dy = 0.01
+    dz = 0.01
+    points_4 = [
+        gp_Pnt(0.0+dx, 0.0-dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 0.0-dy, 0.0-dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 0.0-dz),
+        gp_Pnt(0.0+dx, 1.0+dy, 0.0-dz),
+        gp_Pnt(0.0+dx, 0.0-dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 0.0-dy, 1.0+dz),
+        gp_Pnt(1.0+dx, 1.0+dy, 1.0+dz),
+        gp_Pnt(0.0+dx, 1.0+dy, 1.0+dz)
+    ]
+    solid_box4 = make_box(builder, points_4)
+
+    return solid_box1, solid_box2, solid_box3, solid_box4
 
 
 def compare_faces(face1, face2):
@@ -201,6 +208,7 @@ def compare_faces(face1, face2):
     """
 
     for vert in face1:
+        # TODO: may by, this will not work in all cases
         if vert not in face2:
             return False
 
@@ -414,11 +422,9 @@ def remove_duple_face_shapes(base_shape, shapes):
 
     faces = {}
     dupli_faces = []
-
-    brt = BRep_Tool()
     reshape = BRepTools_ReShape()
 
-    # This for loop is only for filling dictionary of faces
+    # This loop is used only for filling dictionary of faces
     # with faces from first shape
     for face_shape in base_primitives[4].values():
         points = points_of_face(face_shape)
@@ -429,6 +435,7 @@ def remove_duple_face_shapes(base_shape, shapes):
             # created shapes.
             dupli_faces.append(face_shape)
 
+    # This loop is used for filling reshape object
     for shape in shapes:
         primitives = brep_explorer.shape_disassembly(shape)
         # This for loop remove duplicities in remaining shapes
@@ -437,8 +444,8 @@ def remove_duple_face_shapes(base_shape, shapes):
             if remove_duple_faces(reshape, faces, points, face_shape) is False:
                 faces[points] = face_shape
             else:
-                # Debug code ... it can help you to implement glue two solids
-                # together in right way.
+                # Debug code ... it can help you to implement: "glue two solids
+                # together" in right way.
                 # bordering_wires_of_face(shape, face_shape)
                 dupli_faces.append(face_shape)
 
@@ -465,10 +472,10 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
         pnt = brt.Pnt(topods_Vertex(vert))
         border_points.append(pnt)
 
-    primitives1 = brep_explorer.shape_disassembly(face)
+    # Get curves from edges of face
     brt = BRep_Tool()
     curves = []
-    for edge_shape in primitives1[6].values():
+    for edge_shape in primitives0[6].values():
         edge = topods_Edge(edge_shape)
         curve_handle = brt.Curve(edge)[0]
         curve = curve_handle.GetObject()
@@ -490,12 +497,20 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
         # Compute distances between candidate points and curve
         for point in cand_points:
             proj = GeomAPI_ProjectPointOnCurve(point, curve.GetHandle())
-            distances[proj.LowerDistance()] = point
-        # Get candidate with lowest distance
-        min_dist = min(distances.keys())
-        # When distance is lower then tolerance, then we found point at intersection
-        if min_dist <= tolerance:
-            inter_points.append(distances[min_dist])
+            try:
+                low_dist = proj.LowerDistance()
+            # I tried to find, where does this exception come from: "StdFail_NotDone"
+            # but was not able to find it anywhere. So using this wild catching
+            except:
+                pass
+            else:
+                distances[low_dist] = point
+        # Try to get candidate with lowest distance
+        if len(distances) > 0:
+            min_dist = min(distances.keys())
+            # When distance is lower then tolerance, then we found point at intersection
+            if min_dist <= tolerance:
+                inter_points.append(distances[min_dist])
 
     if len(inter_points) == 0:
         return []
@@ -531,8 +546,11 @@ def find_intersected_bordering_faces(face, volume1, volume2, hint_face, toleranc
 
 def display_points(display, points_coords):
     """
-    Display points as yellow crosses
+    Debug function that can be used for displaying of points as yellow crosses.
+
+    :param points_coords: iterable of tuple/list of coordinates
     """
+
     presentation = OCC.Prs3d.Prs3d_Presentation(display._struc_mgr)
     group = OCC.Prs3d.Prs3d_Root_CurrentGroup(presentation.GetHandle()).GetObject()
     black = OCC.Quantity.Quantity_Color(OCC.Quantity.Quantity_NOC_BLACK)
@@ -553,6 +571,7 @@ def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
     Try to create new shape that does not include old_face, but it
     includes instead splitted_faces
     """
+
     old_points = points_of_face(old_face)
 
     sewing = BRepBuilderAPI_Sewing(0.01, True, True, True, False)
@@ -563,6 +582,8 @@ def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
 
     brt = BRep_Tool()
     border_faces = []
+
+    obsolete_face_found = False
 
     # This loop tries to add original not-splitted faces to sewing
     for face_shape in primitives[4].values():
@@ -575,6 +596,14 @@ def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
         if not old_set <= new_set:
             old_face = topods_Face(face_shape)
             sewing.Add(old_face)
+        else:
+            obsolete_face_found = True
+
+    # When no face for replacement was found, then
+    # return origin unchanged shape
+    if obsolete_face_found is not True:
+        return shape
+
     # This loop adds splitted faces to sewing
     for face_shape in splitted_faces:
         old_face = topods_Face(face_shape)
@@ -584,8 +613,8 @@ def replace_face_with_splitted_faces(builder, shape, old_face, splitted_faces):
     sewing.Perform()
     sewing_shape = sewing.SewedShape()
 
-    # When there is no hole in sewing, then following function call will not call
-    # Do not use try-except to solve problems here!
+    # When there is hole in sewing, then following function will be terminated with Error.
+    # Do not use try-except to solve this problems! Fill hole(s) with face(s).
     shell = topods_Shell(sewing_shape)
 
     # Make solid from shell and return result
@@ -602,8 +631,10 @@ def create_replace_dictionary(old_dup_faces, old_shapes, new_shapes, new_hint_fa
     This function tries to create dictionary of face replacements.
     """
     replacements = {}
+    # For all old common faces (was duplicated) try to find splitted faces
     for old_dup_face in old_dup_faces:
         border_faces = []
+        # Use all hint faces to try to find corresponding splitted faces
         for new_hint_face in new_hint_faces:
             # Try to find bordering faces
             tmp_faces = find_intersected_bordering_faces(old_dup_face, old_shapes, new_shapes, new_hint_face)
@@ -620,59 +651,90 @@ def create_replace_dictionary(old_dup_faces, old_shapes, new_shapes, new_hint_fa
     return replacements
 
 
-def solid_compound(filename=None):
+def glue_solids(builder, mold1, mold2, other_molds=None, dup_faces=None, indexes=None):
     """
-    Generate and display several solid object created from b-spline surface and
-    sharing some b-spline surfaces.
+    Try to glue two solid shapes together and glue it with remaining
+    objects in other_molds.
+    
+    :param builder: OCC builder object used for adding shapes
+    :param mold1: First shape that will be glued together with second mold and other_molds
+    :param mold2: Second shape that will be glued together wish first mold and other_molds
+    :param other_molds: other mods already glued together
+    :param dup_faces: common faces between already glued shapes
+    :param indexes: indexes of shapes in other_molds bordering with mold1 and mold2
     """
 
-    display, start_display, add_menu, add_function_to_menu = init_display()
-    display.EraseAll()
-
-    # Create Builder first
-    builder = BRep_Builder()
-
-    solid_box1, solid_box2, solid_box3 = create_test_boxes(builder)
-
-    # Split solid_box into two molds
-    mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
-    mold2 = BRepAlgoAPI_Common(solid_box1, solid_box2)
-
-    # Try to remove face from second mold and share common one face.
-    # It is like glue two shapes together
-    new_molds, dup_faces = remove_duple_face_shapes(mold1.Shape(), (mold2.Shape(),))
-    dup_face1 = dup_faces[0]
-
-    # Split second mold into yet other two molds
-    mold3 = BRepAlgoAPI_Cut(new_molds[1], solid_box3)
-    mold4 = BRepAlgoAPI_Common(new_molds[1], solid_box3)
+    # Note: indexes is fast hack. It would be better to automatically detect which shapes
+    # from other_shapes border with mold1 and mold2
 
     # Again remove common face
-    _new_molds, _dup_faces = remove_duple_face_shapes(mold3.Shape(), (mold4.Shape(),))
-    dup_face2 = _dup_faces[0]
+    _new_molds, _dup_faces = remove_duple_face_shapes(mold1.Shape(), (mold2.Shape(),))
+
+    if other_molds is None and dup_faces is None:
+        return _new_molds, _dup_faces
 
     # Create dictionary with replacements. Keys are original faces and corresponding values are
     # splitted faces ... it is used in next step
     replacements = create_replace_dictionary(dup_faces, _new_molds[0], _new_molds[1], _dup_faces)
 
-    # Apply replacement for all item of dictionary
-    for dup_face, inter_faces in replacements.items():
-        # Replace original face with bordering faces
-        new_mold = replace_face_with_splitted_faces(builder, new_molds[0], dup_face, inter_faces)
-        new_molds[0] = new_mold
+    for mold_idx in indexes:
+        # Apply replacement for all item of dictionary
+        for dup_face, inter_faces in replacements.items():
+            # Replace original face with bordering faces
+            new_mold = replace_face_with_splitted_faces(builder, other_molds[mold_idx], dup_face, inter_faces)
+            other_molds[mold_idx] = new_mold
 
     # Remove duplicities in faces
-    __new_molds, dup_faces = remove_duple_face_shapes(new_molds[0], _new_molds)
+    __new_molds = _new_molds
+    __dup_faces = []
+    for mold_idx in indexes:
+        __new_molds, __tmp_dup_faces = remove_duple_face_shapes(other_molds[mold_idx], __new_molds)
+        __dup_faces.extend(__tmp_dup_faces)
 
-    colors = ['red', 'green', 'blue', 'yellow', 'orange']
+    return __new_molds, __dup_faces
+
+
+def solid_compound(filename=None):
+    """
+    Generate and display several solid object created from b-spline surface and
+    sharing some b-spline surfaces.
+    """
+    print('Computing ...')
+
+    # Create Builder first
+    builder = BRep_Builder()
+
+    solid_box1, solid_box2, solid_box3, solid_box4 = create_test_boxes(builder)
+
+    # Split solid_box into two molds
+    mold1 = BRepAlgoAPI_Cut(solid_box1, solid_box2)
+    mold2 = BRepAlgoAPI_Common(solid_box1, solid_box2)
+
+    # Glue solids together
+    new_molds, dup_faces = glue_solids(builder, mold1, mold2)
+
+    # Split second mold into other two molds
+    mold3 = BRepAlgoAPI_Cut(new_molds[1], solid_box3)
+    mold4 = BRepAlgoAPI_Common(new_molds[1], solid_box3)
+
+    # Glue solids together
+    _new_molds, _dup_faces = glue_solids(builder, mold3, mold4, new_molds, dup_faces, (0,))
+
+    # Split first mold into yet other two molds
+    mold5 = BRepAlgoAPI_Cut(_new_molds[0], solid_box4)
+    mold6 = BRepAlgoAPI_Common(_new_molds[0], solid_box4)
+
+    # Glue solids together
+    __new_molds, __dup_faces = glue_solids(builder, mold5, mold6, _new_molds, _dup_faces, (1, 2))
 
     # Create final compound
     compound = TopoDS_Compound()
     builder.MakeCompound(compound)
-    for color_id, mold in enumerate(__new_molds):
+    for mold in __new_molds:
         builder.Add(compound, mold)
 
-        
+    print('Done')
+      
     # Print statistics about final compound
     print('Final compound')
     stat = brep_explorer.create_shape_stat(compound)
@@ -680,12 +742,16 @@ def solid_compound(filename=None):
 
     # Write compound to the BREP file
     if filename is not None:
-         breptools_Write(compound, filename)
+        print('Writing compound to file:', filename)
+        breptools_Write(compound, filename)
+
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    display.EraseAll()
 
     # Display results
+    colors = ['red', 'green', 'blue', 'yellow', 'orange']
     col_len = len(colors)
     for color_id, mold in enumerate(__new_molds):
-        builder.Add(compound, mold)
         _color_id = color_id % col_len
         ais_shell = display.DisplayShape(mold, color=colors[_color_id], update=True)
         # display.Context.SetTransparency(ais_shell, 0.7)
@@ -696,6 +762,6 @@ if __name__ == '__main__':
     # Parse argument
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--filename", type=str,
-        help="Write Solid created form B-Spline surfaces to BREP file format", default=None)
+        help="Write final compound to BREP file format", default=None)
     args = parser.parse_args()
     solid_compound(args.filename)
