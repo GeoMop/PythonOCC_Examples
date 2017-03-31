@@ -1,0 +1,179 @@
+"""
+This module allows to create surface form bspline patches. Complete surface
+is assembled using sewing.
+"""
+
+
+from OCC.gp import *
+from OCC.Geom import *
+from OCC.TColGeom import *
+from OCC.TColgp import * 
+from OCC.GeomConvert import *
+from OCC.BRepBuilderAPI import *
+from OCC.TopoDS import *
+from OCC.STEPControl import *
+from OCC.Display.SimpleGui import init_display
+from OCC.BRepTools import breptools_Write
+from OCC.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+import argparse
+
+display, start_display, add_menu, add_function_to_menu = init_display()
+
+
+def add_point_to_array(array, co, point, display_point=False):
+    """
+    This function creates OCC point (gp_Pnt) from tuple of 3D
+    coordinates and this OCC points is added then to the OCC 2D
+    array of points.
+    """
+    gp_point = gp_Pnt(point[0], point[1], point[2])
+    if display_point is True:
+        display.DisplayShape(gp_point, update=False)
+    array.SetValue(co[0], co[1], gp_point)    
+
+
+def max_indexes(keys):
+    """
+    Try to find the biggest i and j indexes in the list of tuples.
+    Each tuple contains two indexes.
+    """
+    max_id_i = 0
+    max_id_j = 0
+    for key in keys:
+        if key[0] > max_id_i:
+            max_id_i = key[0]
+        if key[1] > max_id_j:
+            max_id_j = key[1]
+    return max_id_i, max_id_j
+
+
+def add_bspline_patches_to_sewing(sewing, patches):
+    """
+    This function adds patch to the sewing
+    """
+
+    error = 1e-6
+    for patch_id, patch in patches.items():
+        # Create OCC 'array' of Bezier surface
+        bezierarray = TColGeom_Array2OfBezierSurface(1, 1, 1, 1)
+
+        # Create OCC 'array' of control points
+        max_point_i, max_point_j = max_indexes( patch.keys() )
+        array = TColgp_Array2OfPnt(1, max_point_i, 1, max_point_j)
+        # Fill this 'array' of control points with coordinates 
+        for coord_id, coord3d in patch.items():
+            add_point_to_array(array, coord_id, coord3d, True)
+        # Create Bezier surface
+        bezier_surface = Geom_BezierSurface(array)
+        # Add this Bezier surface to 'array' of Bezier surfaces
+        bezierarray.SetValue(1, 1, bezier_surface.GetHandle())
+
+        # Create OCC representation of bspline surface from array
+        BB = GeomConvert_CompBezierSurfacesToBSplineSurface(bezierarray)
+
+        if BB.IsDone():
+            poles = BB.Poles().GetObject().Array2()
+            uknots = BB.UKnots().GetObject().Array1()
+            vknots = BB.VKnots().GetObject().Array1()
+            umult = BB.UMultiplicities().GetObject().Array1()
+            vmult = BB.VMultiplicities().GetObject().Array1()
+            udeg = BB.UDegree()
+            vdeg = BB.VDegree()
+
+            bspline_surface = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, 0, 0)
+
+            face = BRepBuilderAPI_MakeFace(bspline_surface.GetHandle(), error).Shape()
+
+            sewing.Add(face)
+
+
+def create_bspline_surfaces(bsplines):
+    """
+    This function creates object representing bspline patches
+    """
+
+    tolerance = 0.01
+    sewing = BRepBuilderAPI_Sewing(tolerance, True, True, True, False)
+    sewing.SetFloatingEdgesMode(True)
+    sewing.SetFloatingEdgesMode(True)
+
+    for patches in bsplines:
+        add_bspline_patches_to_sewing(sewing, patches)
+
+    sewing.Perform()
+    sewing_shape = sewing.SewedShape()
+    shell = topods_Shell(sewing_shape)
+    return shell
+
+
+def draw_bspline_surface(bspline_surface):
+    """
+    This function tries to draw bspline surface
+    """
+    display.DisplayShape(bspline_surface, update=True)
+    start_display()
+
+def save_bspline_surface_brep(bspline_surface, file_name):
+    """
+    This function tries to save bspline surface to BREP file
+    """
+    breptools_Write(bspline_surface, file_name)
+
+def main(file_name=None):
+    """
+    Main function for testing
+    """
+
+    # Definition of Bezier patches using indexes and coordinates of control points
+    patches_01 = {}
+    patches_01[(1, 1)] = {
+        (1, 1): (1.0, 1.0, 0.0), (1, 2): (2.0, 1.0, 0.0), (1, 3): (3.0, 1.0,  0.0), (1, 4): (4.0, 1.0, 0.0),
+        (2, 1): (1.0, 2.0, 0.0), (2, 2): (2.0, 2.0, 0.0), (2, 3): (3.0, 2.0,  0.0), (2, 4): (4.0, 2.0, 0.0),
+        (3, 1): (1.0, 3.0, 0.0), (3, 2): (2.0, 3.0, 0.0), (3, 3): (3.0, 3.0,  0.0), (3, 4): (4.0, 3.0, 0.0),
+        (4, 1): (1.0, 4.0, 0.0), (4, 2): (2.0, 4.0, 0.0), (4, 3): (3.0, 4.0,  0.0), (4, 4): (4.0, 4.0, 0.0)
+    }
+    patches_01[(1, 2)] = {
+        (1, 1): (4.0, 1.0, 0.0), (1, 2): (5.0, 1.0, 0.0), (1, 3): (6.0, 1.0, 0.0), (1, 4): (7.0, 1.0, 0.0),
+        (2, 1): (4.0, 2.0, 0.0), (2, 2): (5.0, 2.0, 0.0), (2, 3): (6.0, 2.0, 0.0), (2, 4): (7.0, 2.0, 0.0),
+        (3, 1): (4.0, 3.0, 0.0), (3, 2): (5.0, 3.0, 0.0), (3, 3): (6.0, 3.0, 0.0), (3, 4): (7.0, 3.0, 0.0),
+        (4, 1): (4.0, 4.0, 0.0), (4, 2): (5.0, 4.0, 0.0), (4, 3): (6.0, 4.0, 0.0), (4, 4): (7.0, 4.0, 0.0)
+    }
+    patches_02 = {}
+    patches_02[(1, 1)] = {
+        (1, 1): (1.0,  4.0, 0.0), (1, 2): (2.5,  4.0, 0.0), (1, 3): (5.5,  4.0,  0.0), (1, 4): (7.0,  4.0, 0.0),
+        (2, 1): (1.0,  6.0, 0.0), (2, 2): (2.5,  6.0, 0.0), (2, 3): (5.5,  6.0,  0.0), (2, 4): (7.0,  6.0, 0.0),
+        (3, 1): (1.0,  8.0, 0.0), (3, 2): (2.5,  8.0, 0.0), (3, 3): (5.5,  8.0,  0.0), (3, 4): (7.0,  8.0, 0.0),
+        (4, 1): (1.0, 10.0, 0.0), (4, 2): (2.5, 10.0, 0.0), (4, 3): (5.5, 10.0,  0.0), (4, 4): (7.0, 10.0, 0.0)
+    }
+    # patches_03 = {}
+    # patches_03[(1, 1)] = {
+    #     (1, 1): (7.0,  1.0, 0.0), (1, 2): (10.0,  1.0, 0.0), (1, 3): (13.0,  1.0,  0.0), (1, 4): (16.0,  1.0, 0.0),
+    #     (2, 1): (7.0,  4.0, 0.0), (2, 2): (10.0,  4.0, 0.0), (2, 3): (13.0,  4.0,  0.0), (2, 4): (16.0,  4.0, 0.0),
+    #     (3, 1): (7.0,  7.0, 0.0), (3, 2): (10.0,  7.0, 0.0), (3, 3): (13.0,  7.0,  0.0), (3, 4): (16.0,  7.0, 0.0),
+    #     (4, 1): (7.0, 10.0, 0.0), (4, 2): (10.0, 10.0, 0.0), (4, 3): (13.0, 10.0,  0.0), (4, 4): (16.0, 10.0, 0.0)
+    # }
+    # patches_04 = {}
+    # patches_04[(1, 1)] = {
+    #     (1, 1): (1.0, 10.0, 0.0), (1, 2): (6.0, 10.0, 0.0), (1, 3): (11.0, 10.0,  0.0), (1, 4): (16.0, 10.0, 0.0),
+    #     (2, 1): (1.0, 15.0, 0.0), (2, 2): (6.0, 15.0, 0.0), (2, 3): (11.0, 15.0,  0.0), (2, 4): (16.0, 15.0, 0.0),
+    #     (3, 1): (1.0, 20.0, 0.0), (3, 2): (6.0, 20.0, 0.0), (3, 3): (11.0, 20.0,  0.0), (3, 4): (16.0, 20.0, 0.0),
+    #     (4, 1): (1.0, 25.0, 0.0), (4, 2): (6.0, 25.0, 0.0), (4, 3): (11.0, 25.0,  0.0), (4, 4): (16.0, 25.0, 0.0)
+    # }
+
+    # bspline_surface = create_bspline_surfaces((patches_01, patches_02, patches_03, patches_04))
+    bspline_surface = create_bspline_surfaces((patches_01, patches_02))
+
+    if file_name is not None:
+        save_bspline_surface_brep(bspline_surface, file_name)
+
+    draw_bspline_surface(bspline_surface)
+
+
+if __name__ == '__main__':
+    # Parse argument
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--filename", type=str,
+        help="Write B-Spline surface to BREP file format", default=None)
+    args = parser.parse_args()
+    main(args.filename)
