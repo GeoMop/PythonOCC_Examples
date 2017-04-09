@@ -95,7 +95,7 @@ def bspline_surface():
     vperiod = False
 
     # Create 2D array of poles (control points)
-    poles = TColgp_Array2OfPnt(1, udeg + 1, 1, vdeg + 1)
+    poles = TColgp_Array2OfPnt(1, 3, 1, 3)
     poles.SetValue(1, 1, gp_Pnt(1, 1, 1))
     poles.SetValue(1, 2, gp_Pnt(2, 1, 2))
     poles.SetValue(1, 3, gp_Pnt(3, 1, 1))
@@ -107,7 +107,7 @@ def bspline_surface():
     poles.SetValue(3, 3, gp_Pnt(3, 3, 0))
 
     # Create 2D array of weights
-    weights = TColStd_Array2OfReal(1, udeg + 1, 1, vdeg + 1)
+    weights = TColStd_Array2OfReal(1, 3, 1, 3)
     weights.SetValue(1, 1, 1.0)
     weights.SetValue(1, 2, 1.0)
     weights.SetValue(1, 3, 1.0)

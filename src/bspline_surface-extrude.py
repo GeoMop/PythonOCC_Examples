@@ -12,6 +12,8 @@ from OCC.GeomConvert import *
 from OCC.BRepBuilderAPI import *
 from OCC.TopoDS import *
 from OCC.STEPControl import *
+from OCC.BRep import *
+import OCC.ShapeFix
 
 from OCC.Display.SimpleGui import init_display
 display, start_display, add_menu, add_function_to_menu = init_display()
@@ -28,13 +30,12 @@ def extrude_edge(upole, uknots, umult, udeg, z_coord):
 
     vdeg = 1
     
-    print "poles"
     # Create 2D array of poles (control points)
     poles = TColgp_Array2OfPnt(1, upole.Length(), 1, 2)
     for index in range(1, upole.Length() + 1):
         point = upole.Value(index)
         poles.SetValue(index, 1, point)
-        poles.SetValue(index, 2, gp_Pnt(point.X(), point.Y(), z_coord))
+        poles.SetValue(index, 2, gp_Pnt(point.X(), point.Y(), point.Z() + z_coord))
 
     # Length of uknots and umult has to be same
     # Same rule is for vknots and vmult
@@ -43,7 +44,6 @@ def extrude_edge(upole, uknots, umult, udeg, z_coord):
     # Knots for V direction
     vknots = TColStd_Array1OfReal(1, vknot_len)
 
-    print "knots"
     # Main curves begins and ends at first and last points
     vknots.SetValue(1, 0.0)
     vknots.SetValue(2, 1.0)
@@ -51,7 +51,6 @@ def extrude_edge(upole, uknots, umult, udeg, z_coord):
     # Multiplicities for U and V direction
     vmult = TColStd_Array1OfInteger(1, vmult_len)
 
-    print "mults"
     # First and last multiplicities are set to udeg + 1 (vdeg respectively),
     # because we want main curves to start and finish on the first and
     # the last points
@@ -63,8 +62,7 @@ def extrude_edge(upole, uknots, umult, udeg, z_coord):
 
     # Try to create surface
     BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
-
-    display.DisplayShape(BSPLSURF.GetHandle(), update=True)
+    return BSPLSURF
 
 def cap_extrude(bspl_surf, z_coord):
     """
@@ -82,6 +80,7 @@ def cap_extrude(bspl_surf, z_coord):
 
     poles = TColgp_Array2OfPnt(1, nb_u_poles, 1, nb_v_poles)
     bspl_surf.Poles(poles)
+    new_poles = TColgp_Array2OfPnt(1, nb_u_poles, 1, nb_v_poles)
 
     nb_u_knots = nb_u_mults = bspl_surf.NbUKnots()
     nb_v_knots = nb_v_mults = bspl_surf.NbVKnots()
@@ -95,15 +94,17 @@ def cap_extrude(bspl_surf, z_coord):
     bspl_surf.VMultiplicities(vmults)
 
     # Set Z coordinate in poles
-    for u_val in range(1, nb_u_poles+1):
-        for v_val in range(1, nb_v_poles+1):
-            point = poles.Value(u_val, v_val)
-            poles.SetValue(u_val, v_val, OCC.gp.gp_Pnt(point.X(), point.Y(), z_coord))
+    for u_idx in range(1, nb_u_poles+1):
+        for v_idx in range(1, nb_v_poles+1):
+            _u_idx = nb_u_poles + 1 - u_idx
+            _v_idx = nb_v_poles + 1 - v_idx
+            point = poles.Value(_u_idx, _v_idx)
+            new_poles.SetValue(u_idx, v_idx, OCC.gp.gp_Pnt(point.X(), point.Y(), point.Z() + z_coord))
 
-    BSPLSURF = Geom_BSplineSurface(poles, uknots, vknots, umults, vmults, udeg, vdeg, uperiod, vperiod)
-    display.DisplayShape(BSPLSURF.GetHandle(), update=True)
+    BSPLSURF = Geom_BSplineSurface(new_poles, uknots, vknots, umults, vmults, udeg, vdeg, uperiod, vperiod)
+    return BSPLSURF
 
-def extrude_surface(bspl_surf, z_coord):
+def extrude_surface(sewing, bspl_surf, z_coord):
     """Try to extrude """
     nb_u_poles = bspl_surf.NbUPoles()
     nb_v_poles = bspl_surf.NbVPoles()
@@ -117,32 +118,49 @@ def extrude_surface(bspl_surf, z_coord):
     bspl_surf.UKnots(uknots)
     bspl_surf.UMultiplicities(umults)
 
+    error = 1e-6
     # 1: Extrude one border edge
     edge = TColgp_Array1OfPnt(1, nb_u_poles)
     for index in range(1, nb_u_poles+1):
-        edge.SetValue(index, poles.Value(1, index))
-    extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+        _index = nb_u_poles + 1 - index
+        edge.SetValue(index, poles.Value(1, _index))
+    extruded_surf = extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    # extruded_surf.ExchangeUV()
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(extruded_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
 
     # 2: Extrude one border edge
     edge = TColgp_Array1OfPnt(1, nb_u_poles)
     for index in range(1, nb_u_poles+1):
         edge.SetValue(index, poles.Value(nb_v_poles, index))
-    extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    extruded_surf = extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    # extruded_surf.ExchangeUV()
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(extruded_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
 
     # 3: Extrude one border edge
     edge = TColgp_Array1OfPnt(1, nb_v_poles)
     for index in range(1, nb_v_poles+1):
         edge.SetValue(index, poles.Value(index, 1))
-    extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    extruded_surf = extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    # extruded_surf.ExchangeUV()
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(extruded_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
 
-    # 2: Extrude one border edge
+    # 4: Extrude one border edge
     edge = TColgp_Array1OfPnt(1, nb_v_poles)
     for index in range(1, nb_v_poles+1):
-        edge.SetValue(index, poles.Value(index, nb_u_poles))
-    extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+        _index = nb_v_poles + 1 - index
+        edge.SetValue(index, poles.Value(_index, nb_u_poles))
+    extruded_surf = extrude_edge(edge, uknots, umults, bspl_surf.UDegree(), z_coord)
+    # extruded_surf.ExchangeUV()
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(extruded_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
 
     # Cap it
-    cap_extrude(bspl_surf, z_coord)
+    cap_surf = cap_extrude(bspl_surf, z_coord)
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(cap_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
 
 def bspline_surface():
     """
@@ -161,16 +179,16 @@ def bspline_surface():
     poles = TColgp_Array2OfPnt(1, udeg + 1, 1, vdeg + 1)
     # 1
     poles.SetValue(1, 1, gp_Pnt(1, 1, 1))
-    poles.SetValue(1, 2, gp_Pnt(2, 1, 2))
-    poles.SetValue(1, 3, gp_Pnt(3, 1, 1))
+    poles.SetValue(1, 2, gp_Pnt(3, 1, 2))
+    poles.SetValue(1, 3, gp_Pnt(6, 1, 1))
     # 2
     poles.SetValue(2, 1, gp_Pnt(1, 2, 1))
-    poles.SetValue(2, 2, gp_Pnt(2, 2, 2))
-    poles.SetValue(2, 3, gp_Pnt(3, 2, 0))
+    poles.SetValue(2, 2, gp_Pnt(3, 2, 2))
+    poles.SetValue(2, 3, gp_Pnt(6, 2, 0))
     # 3
     poles.SetValue(3, 1, gp_Pnt(1, 3, 2))
-    poles.SetValue(3, 2, gp_Pnt(2, 3, 2))
-    poles.SetValue(3, 3, gp_Pnt(3, 3, 0))
+    poles.SetValue(3, 2, gp_Pnt(3, 3, 2))
+    poles.SetValue(3, 3, gp_Pnt(6, 3, 0))
 
     # Length of uknots and umult has to be same
     # Same rule is for vknots and vmult
@@ -205,11 +223,41 @@ def bspline_surface():
     # Try to create surface
     bspl_surf = Geom_BSplineSurface(poles, uknots, vknots, umult, vmult, udeg, vdeg, uperiod, vperiod)
 
-    display.DisplayShape(bspl_surf.GetHandle(), update=True)
-
     return bspl_surf
 
 if __name__ == '__main__':
     bspl_surf = bspline_surface()
-    extrude_surface(bspl_surf, -1.0)
+    sewing = OCC.BRepBuilderAPI.BRepBuilderAPI_Sewing(0.01, True, True, True, False)
+    sewing.SetFloatingEdgesMode(True)
+    error = 1e-6
+    face = OCC.BRepBuilderAPI.BRepBuilderAPI_MakeFace(bspl_surf.GetHandle(), error).Shape()
+    sewing.Add(face)
+    extrude_surface(sewing, bspl_surf, -1.0)
+    sewing.Perform()
+    sewing_shape = sewing.SewedShape()
+    shell = topods_Shell(sewing_shape)
+
+    # Try to fix normals
+    shape_fix = OCC.ShapeFix.ShapeFix_Shell(shell)
+    shape_fix.FixFaceOrientation(shell)
+    shape_fix.Perform()
+
+    make_solid = BRepBuilderAPI_MakeSolid()
+    make_solid.Add(shell)
+
+    solid = make_solid.Solid()
+
+    builder = BRep_Builder()
+    builder.MakeSolid(solid)
+    builder.Add(solid, shell)
+
+    compound = TopoDS_Compound()
+
+    builder.MakeCompound(compound)
+    builder.Add(compound, solid)
+
+    from OCC.BRepTools import breptools_Write
+    breptools_Write(compound, 'extrude.brep')
+
+    display.DisplayShape(shell, update=True)
     start_display()
